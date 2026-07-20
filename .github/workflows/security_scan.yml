@@ -1,0 +1,99 @@
+name: Security Checks
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    # 毎週日曜日の朝9時（日本時間）に実行
+    # ※GitHubはUTC（協定世界時）基準のため、JSTから9時間引いた時刻・曜日を指定します。
+    #   日曜 09:00 JST = 日曜 00:00 UTC
+    # 分 時 日 月 曜日 (0=日, 1=月...)
+    - cron: '0 0 * * 0'
+
+# 最小権限の原則（このワークフローは読み取りのみで十分）
+permissions:
+  contents: read
+
+# 同一ブランチで新しい実行が始まったら、進行中の古い実行はキャンセル
+concurrency:
+  group: security-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+
+    # 1. uvの公式アクションを使って最速でuvをセットアップ
+    - name: Install uv
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+      with:
+        enable-cache: true
+
+    # 2. Pythonのセットアップ (uvが自動で管理・高速インストール)
+    - name: Set up Python
+      run: uv python install 3.13
+
+    # 3. Banditによるコード診断
+    #    -ll は中・高の重要度のみ報告（低重要度はビルドを落とさない）。意図的な選択。
+    #    ./tests を除外しているため、テストコード内の問題は検知対象外になる点に注意。
+    - name: Run Bandit (Code Vulnerability Scanner)
+      id: bandit
+      continue-on-error: true
+      run: |
+        uvx bandit -r . -ll -x ./.venv,./tests,./staticfiles,./.git
+
+    # 4. pip-auditによるライブラリの脆弱性診断
+    #    --no-emit-project でプロジェクト自身の行を除外（pip-auditが扱いに困るのを防ぐ）。
+    #    dev依存を監査対象から外したい場合は `--no-dev` を追加。
+    - name: Run pip-audit (Dependency Vulnerability Scanner)
+      id: pip_audit
+      continue-on-error: true
+      run: |
+        uv export --format requirements-txt --no-emit-project > requirements-export.txt
+        uvx pip-audit -r requirements-export.txt
+
+    # 5. Glassworm (Trojan Source) 対策: 不可視文字・Bidi制御文字の検知
+    #    - ロケールを UTF-8 に固定して \x{...} を確実にコードポイント解釈させる
+    #    - grep の終了コードを厳密に扱う（1=一致なし=安全 / 2以上=エラーは安全扱いしない）
+    #    - set -e 下でも grep の非ゼロ終了で即abortしないよう `|| status=$?` で受ける
+    - name: Check for invisible characters (Glassworm prevention)
+      id: glassworm
+      continue-on-error: true
+      run: |
+        export LC_ALL=C.UTF-8
+        status=0
+        grep -rnP '[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}\x{2066}-\x{2069}]' \
+          --include="*.py" --include="*.html" --include="*.js" \
+          --exclude-dir=.git --exclude-dir=.venv --exclude-dir=node_modules \
+          --exclude-dir=staticfiles . || status=$?
+        if [ "$status" -eq 0 ]; then
+          echo "❌ 警告: ソースコード内に悪意のある可能性のある不可視文字（Glassworm）が検出されました！"
+          exit 1
+        elif [ "$status" -eq 1 ]; then
+          echo "✅ 不可視文字は検出されませんでした。安全です。"
+        else
+          echo "⚠️ grep がエラー終了しました (code=$status)。安全とは判定できません。"
+          exit "$status"
+        fi
+
+    # 6. 各チェックの結果を集約し、1つでも失敗があればジョブを失敗させる
+    #    (continue-on-error で全チェックを走らせた上で、最後にまとめて判定)
+    - name: Aggregate results
+      run: |
+        echo "Bandit:     ${{ steps.bandit.outcome }}"
+        echo "pip-audit:  ${{ steps.pip_audit.outcome }}"
+        echo "Glassworm:  ${{ steps.glassworm.outcome }}"
+        if [ "${{ steps.bandit.outcome }}" != "success" ] || \
+           [ "${{ steps.pip_audit.outcome }}" != "success" ] || \
+           [ "${{ steps.glassworm.outcome }}" != "success" ]; then
+          echo "❌ セキュリティチェックに失敗があります。上記ログを確認してください。"
+          exit 1
+        fi
+        echo "✅ すべてのセキュリティチェックに合格しました。"
