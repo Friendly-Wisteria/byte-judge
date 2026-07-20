@@ -16,7 +16,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>バイトジャッジ</title>
+        <title>バイトジャッジ - そのバイト、闇バイトかも?</title>
         <link
             rel="stylesheet"
             href="https://bootswatch.com/5/vapor/bootstrap.min.css"
@@ -76,19 +76,26 @@
                 スクショを読み取り中…
             </div>
             <div class="small text-secondary">
-                AIがあやしいポイントを確認しています。5秒くらい待ってね。
+                AIがあやしいポイントを確認しています。
             </div>
         </div>
         <div class="container py-4 py-md-5">
             <div class="row justify-content-center">
                 <div class="col-12 col-md-10 col-lg-7">
                     <!-- ヘッダー -->
-                    <div class="eyebrow text-info mb-1">
-                        スクショを送るだけ ・ 30秒でチェック
+                    {% if messages %}
+                    {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }}" role="alert">
+                        {{ message }}
                     </div>
-                    <h1 class="fw-bold mb-2">そのバイト、闇バイトかも？</h1>
+                    {% endfor %}
+                    {% endif %}
+                    <div class="eyebrow text-info mb-1">
+                        スクショを送るだけ ・ 30秒で、闇バイトの可能性をチェック
+                    </div>
+                    <h1 class="fw-bold mb-2">バイトジャッジ</h1>
                     <p class="text-secondary mb-4">
-                        気になる求人のスクショを送るだけ。「簡単・高額・即日」の裏に隠れた“やばいサイン”を、AIがチェックします。
+                        気になる求人のスクショを送るだけ。「簡単・高額・即日」の裏に隠れた“ヤバいサイン”を、AIがチェックします。
                     </p>
 
                     <!-- アップロードフォーム -->
