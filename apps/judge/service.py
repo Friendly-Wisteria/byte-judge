@@ -3,9 +3,12 @@ from google import genai
 from PIL import Image
 from google.genai import types,errors
 from .schema import RiskReportSchema
+from .tests import FIXTURES
+from config import settings
 from pathlib import Path
 import io
 import logging
+import random
 
 # Appのパスの取得
 APP_PATH = apps.get_app_config('judge').path
@@ -30,9 +33,15 @@ def job_offer_risk_assess(job_offer:Image.Image)->RiskReportSchema:
     Returns:
         リスクアセスの結果 (ReskReportSchema)
     """
-    # 0. Gemini API Clientの構築
+    # 0. VIEW TEST MODEの場合、実際にはAPIを叩かず、サンプルを出力する
+    if settings.VIEW_TEST_MODE:
+        logger.warning('VIEW TEST MODE: Show only response sample, NOT an actual LLM response.')
+        case = random.choice(list(FIXTURES))
+        return RiskReportSchema.model_validate(FIXTURES[case])
 
+    # 1. Gemini API Clientの構築
     logger.info('Creating Client...')
+    # 1-1 API Client
     client = genai.Client(
         http_options=types.HttpOptions(
             timeout=180000,
@@ -44,13 +53,13 @@ def job_offer_risk_assess(job_offer:Image.Image)->RiskReportSchema:
             )
         )
     )
-    # 0-1. API Client Config
+    # 1-2. API Client Config
     logger.info('Creating config...')
     config = types.GenerateContentConfig(
         response_mime_type="application/json",
         response_schema=RiskReportSchema
     )
-    # 1. プロンプトの定型文の読み込み
+    # 2. プロンプトの定型文の読み込み
     logger.info('Loading prompt template...')
     try:
         with open(PROMPT_PATH,'r',encoding='utf-8') as f:
@@ -59,7 +68,7 @@ def job_offer_risk_assess(job_offer:Image.Image)->RiskReportSchema:
         logging.error(f"Error: Prompt template file not found {PROMPT_PATH}")
         return None
 
-    # 2. Gemini APIを叩く
+    # 3. Gemini APIを叩く
     logger.info('Requesting to Gemini API...')
     contents = [prompt_text,_pil_to_part(job_offer)]
     try:
@@ -71,8 +80,8 @@ def job_offer_risk_assess(job_offer:Image.Image)->RiskReportSchema:
     except errors.ServerError as e:
         logger.error(f"Server error:{e.code} {e.status}: {e.message}",exc_info=False)
         return None
-    # 3. レスポンスを、RiskReportSchemaでパースして出力
-    # 3-1. パースできない場合はエラー
+    # 4. レスポンスを、RiskReportSchemaでパースして出力
+    # 4-1. パースできない場合はエラー
     logger.info('Parsing response...')
     if not response.parsed:
         logger.error("Parse error")
