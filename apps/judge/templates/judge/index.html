@@ -1,0 +1,322 @@
+<!doctype html>
+<!--
+  闇バイト 危険度チェック  Bootstrap(Vapor)版 フロントのみ
+  ドラッグ&ドロップ / 画像ペースト対応。判定処理は含みません。
+
+  view から渡す context の想定キー:
+    result ... 判定結果オブジェクト。無い時（初回表示）はアップロードUIだけ表示。
+      result.score       0〜100の整数（危険度）
+      result.level       表示ラベル: 危険 / 要注意 / 安全
+      result.bs_color    Bootstrap配色: danger / warning / success
+      result.summary     総合判断の文
+      result.signals     シグナルのリスト（各要素は name / severity / bs_color / detail）
+      result.advice      推奨アクションの文
+-->
+<html lang="ja">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>バイトジャッジ</title>
+        <link
+            rel="stylesheet"
+            href="https://bootswatch.com/5/vapor/bootstrap.min.css"
+        />
+        <style>
+            .eyebrow {
+                font-size: 0.72rem;
+                letter-spacing: 0.18em;
+                text-transform: uppercase;
+            }
+            .dropzone {
+                border: 2px dashed var(--bs-border-color);
+                border-radius: 0.5rem;
+                padding: 2rem 1rem;
+                text-align: center;
+                cursor: pointer;
+                transition:
+                    border-color 0.15s,
+                    background-color 0.15s;
+            }
+            .dropzone:hover {
+                border-color: var(--bs-primary);
+            }
+            .dropzone.dragover {
+                border-color: var(--bs-primary);
+                background-color: rgba(var(--bs-primary-rgb), 0.12);
+            }
+            .dropzone.has-file {
+                padding: 1rem;
+            }
+            #loading-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 1080;
+                display: none;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 1rem;
+                background: rgba(13, 12, 34, 0.82);
+                backdrop-filter: blur(4px);
+                text-align: center;
+                padding: 1rem;
+            }
+            #loading-overlay.show {
+                display: flex;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="loading-overlay" role="status" aria-live="polite">
+            <div
+                class="spinner-border text-info"
+                style="width: 3rem; height: 3rem"
+            ></div>
+            <div class="fs-5 fw-semibold text-info mt-2" id="loading-msg">
+                スクショを読み取り中…
+            </div>
+            <div class="small text-secondary">
+                AIがあやしいポイントを確認しています。5秒くらい待ってね。
+            </div>
+        </div>
+        <div class="container py-4 py-md-5">
+            <div class="row justify-content-center">
+                <div class="col-12 col-md-10 col-lg-7">
+                    <!-- ヘッダー -->
+                    <div class="eyebrow text-info mb-1">
+                        スクショを送るだけ ・ 30秒でチェック
+                    </div>
+                    <h1 class="fw-bold mb-2">そのバイト、闇バイトかも？</h1>
+                    <p class="text-secondary mb-4">
+                        気になる求人のスクショを送るだけ。「簡単・高額・即日」の裏に隠れた“やばいサイン”を、AIがチェックします。
+                    </p>
+
+                    <!-- アップロードフォーム -->
+                    <form
+                        method="post"
+                        enctype="multipart/form-data"
+                        action=""
+                        class="card mb-4"
+                    >
+                        <div class="card-body">
+                            {% csrf_token %}
+
+                            <!-- ドロップ / クリック / ペースト 対応ゾーン -->
+                            <div id="dropzone" class="dropzone mb-3">
+                                <div id="dz-idle">
+                                    <div class="fw-semibold">
+                                        求人のスクショをここに
+                                    </div>
+                                    <div class="small text-secondary mt-1">
+                                        タップで選択 ・ ドラッグ&ドロップ ・ 貼り付け（Ctrl / Cmd + V）でもOK
+                                    </div>
+                                </div>
+                                <img id="preview" class="img-fluid rounded d-none" alt=""/>
+                            </div>
+
+                            <input type="file" id="file" name="image" accept="image/*" class="d-none"/>
+                            <div id="filename" class="small text-secondary mb-3 d-none"></div>
+                            <div id="file-error" class="text-danger small mb-2 d-none">まず求人のスクショを選んでね。</div>
+                            <button type="submit" class="btn btn-primary w-100">
+                                このバイトをチェック
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- 判定結果（result がある時だけ表示） -->
+                    {% if result %}
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <!-- 危険度メーター -->
+                            <div class="d-flex align-items-center gap-3 mb-3">
+                                <span
+                                    class="badge text-bg-{{ result.bs_color }} fs-5 px-3 py-2"
+                                >
+                                    {{ result.level }}
+                                </span>
+                                <div class="flex-grow-1">
+                                    <div
+                                        class="d-flex justify-content-between small text-secondary mb-1"
+                                    >
+                                        <span>危険度</span>
+                                        <span>{{ result.score }}/100</span>
+                                    </div>
+                                    <div
+                                        class="progress"
+                                        role="progressbar"
+                                        aria-label="危険度"
+                                        aria-valuenow="{{ result.score }}"
+                                        aria-valuemin="0"
+                                        aria-valuemax="100"
+                                        style="height: 10px"
+                                    >
+                                        <div
+                                            class="progress-bar bg-{{ result.bs_color }}"
+                                            style="width: {{ result.score }}%;"
+                                        ></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <p class="mb-0">{{ result.summary }}</p>
+
+                            <!-- 検出されたシグナル -->
+                            {% if result.signals %}
+                            <hr />
+                            <div class="eyebrow text-secondary mb-2">
+                                見つかったあやしいポイント ・ {{ result.signals|length }}
+                            </div>
+                            <ul class="list-group mb-0">
+                                {% for s in result.signals %}
+                                <li
+                                    class="list-group-item d-flex flex-column flex-sm-row gap-2"
+                                >
+                                    <span
+                                        class="badge text-bg-{{ s.bs_color }} align-self-start"
+                                    >
+                                        {{ s.severity }}
+                                    </span>
+                                    <div>
+                                        <div class="fw-bold">{{ s.name }}</div>
+                                        {% if s.detail %}
+                                        <div class="small text-secondary">
+                                            {{ s.detail }}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- 推奨アクション -->
+                    {% if result.advice %}
+                    <div class="alert alert-{{ result.bs_color }}" role="alert">
+                        <div class="fw-bold mb-1">どうすればいい？</div>
+                        <div>{{ result.advice }}</div>
+                    </div>
+                    {% endif %} {% endif %}
+
+                    <!-- 注意書き -->
+                    <p class="text-secondary small border-top pt-3 mt-4 mb-0">
+                        これはAIによる目安です。まちがえることもあるので、少しでも不安なら家族や警察相談専用ダイヤル「#9110」に相談してください。送った画像や結果は保存されません。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ファイル選択 / ドロップ / ペースト の3経路に対応（判定処理は含みません） -->
+        <script>
+            (function () {
+              var input     = document.getElementById('file');
+              var dropzone  = document.getElementById('dropzone');
+              var idle      = document.getElementById('dz-idle');
+              var preview   = document.getElementById('preview');
+              var filename  = document.getElementById('filename');
+              var fileError = document.getElementById('file-error');
+              var form      = input.closest('form');
+              var overlay   = document.getElementById('loading-overlay');
+              var msgEl     = document.getElementById('loading-msg');
+
+              // ---- 受け取ったファイルを input に反映（クリック / D&D / ペースト共通） ----
+              function setFile(file) {
+                if (!file || !file.type.startsWith('image/')) return;
+
+                var dt = new DataTransfer();
+                dt.items.add(file);
+                input.files = dt.files;
+
+                preview.src = URL.createObjectURL(file);
+                preview.classList.remove('d-none');
+                idle.classList.add('d-none');
+                dropzone.classList.add('has-file');
+
+                filename.textContent = file.name || 'pasted-image';
+                filename.classList.remove('d-none');
+
+                hideError();  // 選択できたのでエラー表示を消す
+              }
+
+              function hasFile() { return input.files && input.files.length > 0; }
+              function hideError() {
+                if (fileError) fileError.classList.add('d-none');
+                dropzone.classList.remove('border-danger');
+              }
+              function showError() {
+                if (fileError) fileError.classList.remove('d-none');
+                dropzone.classList.add('border-danger');
+                dropzone.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+
+              // 1) クリックで選択
+              dropzone.addEventListener('click', function () { input.click(); });
+              input.addEventListener('change', function () {
+                if (hasFile()) setFile(input.files[0]);
+              });
+
+              // 2) ドラッグ&ドロップ
+              ['dragenter', 'dragover'].forEach(function (ev) {
+                dropzone.addEventListener(ev, function (e) {
+                  e.preventDefault();
+                  dropzone.classList.add('dragover');
+                });
+              });
+              ['dragleave', 'dragend', 'drop'].forEach(function (ev) {
+                dropzone.addEventListener(ev, function (e) {
+                  e.preventDefault();
+                  dropzone.classList.remove('dragover');
+                });
+              });
+              dropzone.addEventListener('drop', function (e) {
+                var files = e.dataTransfer && e.dataTransfer.files;
+                if (files && files[0]) setFile(files[0]);
+              });
+
+              // 3) ペースト
+              window.addEventListener('paste', function (e) {
+                var items = (e.clipboardData && e.clipboardData.items) || [];
+                for (var i = 0; i < items.length; i++) {
+                  if (items[i].type && items[i].type.startsWith('image/')) {
+                    var f = items[i].getAsFile();
+                    if (f) { setFile(f); break; }
+                  }
+                }
+              });
+
+              // ---- 送信時: JSでファイル有無を検証してからオーバーレイ ----
+              form.addEventListener('submit', function (e) {
+                if (!hasFile()) {
+                  e.preventDefault();   // 送信を止める（フリーズさせない）
+                  showError();
+                  return;
+                }
+
+                // ファイルあり → 送信は継続。オーバーレイ表示 + 二重送信防止
+                overlay.classList.add('show');
+                var btn = form.querySelector('button[type="submit"]');
+                if (btn) { btn.disabled = true; btn.textContent = 'チェック中…'; }
+
+                var msgs = [
+                  'スクショを読み取り中…',
+                  'あやしいサインを照合中…',
+                  '総合的にチェック中…'
+                ];
+                var i = 0;
+                setInterval(function () {
+                  i = (i + 1) % msgs.length;
+                  if (msgEl) msgEl.textContent = msgs[i];
+                }, 2500);
+              });
+
+              // ブラウザ「戻る」でキャッシュ復元されたときに状態をリセット
+              window.addEventListener('pageshow', function () {
+                overlay.classList.remove('show');
+                var btn = form.querySelector('button[type="submit"]');
+                if (btn) { btn.disabled = false; btn.textContent = 'このバイトをチェック'; }
+              });
+            })();
+        </script>
+    </body>
+</html>
