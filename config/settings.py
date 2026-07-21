@@ -33,7 +33,7 @@ SECRET_KEY = env('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env('DEBUG')
 
-FIELD_ENCRYPTION_KEY = env('FIELD_ENCRYPTION_KEY')
+FIELD_ENCRYPTION_KEY = env
 
 ALLOWED_HOSTS = []
 
@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'encrypted_model_fields',
     'apps.judge',
+    'apps.analytics',
 ]
 
 MIDDLEWARE = [
