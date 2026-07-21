@@ -45,7 +45,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'apps.judge'
+    'apps.judge',
+    'apps.analytics',
 ]
 
 MIDDLEWARE = [
@@ -108,6 +109,11 @@ LOGGING = {
     'loggers': {
         # ここがポイント！ アプリ名を指定して共通ロガーを作成
         'apps.judge': {
+            'handlers': ['console'],
+            'level': 'DEBUG',  # 開発時はDEBUGなどに変更
+            'propagate': False,
+        },
+        'apps.analytics': {
             'handlers': ['console'],
             'level': 'DEBUG',  # 開発時はDEBUGなどに変更
             'propagate': False,
