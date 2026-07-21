@@ -1,7 +1,7 @@
 <!doctype html>
 <!--
   闇バイト 危険度チェック  Bootstrap(Vapor)版 フロントのみ
-  ドラッグ&ドロップ / 画像ペースト対応。判定処理は含みません。
+  スクショ / テキスト の2経路に対応。ドラッグ&ドロップ / 画像ペースト対応。判定処理は含みません。
 
   view から渡す context の想定キー:
     result ... 判定結果オブジェクト。無い時（初回表示）はアップロードUIだけ表示。
@@ -11,16 +11,18 @@
       result.summary     総合判断の文
       result.signals     シグナルのリスト（各要素は name / severity / bs_color / detail）
       result.advice      推奨アクションの文
+
+  view 側での受け取り例:
+    mode = request.POST.get("mode")           # "image" or "text"
+    image = request.FILES.get("image")        # スクショ送信時
+    text  = request.POST.get("text", "")      # テキスト送信時
 -->
 <html lang="ja">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>バイトジャッジ - そのバイト、闇バイトかも?</title>
-        <link
-            rel="stylesheet"
-            href="https://bootswatch.com/5/vapor/bootstrap.min.css"
-        />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.8/dist/vapor/bootstrap.min.css">
         <style>
             .eyebrow {
                 font-size: 0.72rem;
@@ -46,6 +48,10 @@
             }
             .dropzone.has-file {
                 padding: 1rem;
+            }
+            #text {
+                min-height: 180px;
+                resize: vertical;
             }
             #loading-overlay {
                 position: fixed;
@@ -73,7 +79,7 @@
                 style="width: 3rem; height: 3rem"
             ></div>
             <div class="fs-5 fw-semibold text-info mt-2" id="loading-msg">
-                スクショを読み取り中…
+                読み取り中…
             </div>
             <div class="small text-secondary">
                 AIがあやしいポイントを確認しています。
@@ -91,44 +97,88 @@
                     {% endfor %}
                     {% endif %}
                     <div class="eyebrow text-info mb-1">
-                        スクショを送るだけ ・ 30秒で、闇バイトの可能性をチェック
+                        スクショ or テキストを送るだけ ・ 30秒で、闇バイトの可能性をチェック
                     </div>
                     <h1 class="fw-bold mb-2">バイトジャッジ</h1>
                     <p class="text-secondary mb-4">
-                        気になる求人のスクショを送るだけ。「簡単・高額・即日」の裏に隠れた“ヤバいサイン”を、AIがチェックします。
+                        気になる求人のスクショか、募集文のテキストを送るだけ。「簡単・高額・即日」の裏に隠れた“ヤバいサイン”を、AIがチェックします。
                     </p>
+                    <ul class="nav nav-tabs" role="tablist">
+                      <li class="nav-item" role="presentation">
+                        <a class="nav-link active" data-bs-toggle="tab" href="#home" aria-selected="true" role="tab">スクショで送る</a>
+                      </li>
+                      <li class="nav-item" role="presentation">
+                        <a class="nav-link" data-bs-toggle="tab" href="#profile" aria-selected="false" role="tab" tabindex="-1">テキストで送る</a>
+                      </li>
+                    </ul>
+                    <div id="myTabContent" class="tab-content">
+                      <!-- ============ スクショ タブ ============ -->
+                      <div class="tab-pane fade active show" id="home" role="tabpanel">
+                          <form
+                              id="form-image"
+                              method="post"
+                              enctype="multipart/form-data"
+                              action=""
+                              class="card mb-4"
+                          >
+                              <div class="card-body">
+                                  {% csrf_token %}
+                                  <input type="hidden" name="mode" value="image" />
 
-                    <!-- アップロードフォーム -->
-                    <form
-                        method="post"
-                        enctype="multipart/form-data"
-                        action=""
-                        class="card mb-4"
-                    >
-                        <div class="card-body">
-                            {% csrf_token %}
+                                  <!-- ドロップ / クリック / ペースト 対応ゾーン -->
+                                  <div id="dropzone" class="dropzone mb-3">
+                                      <div id="dz-idle">
+                                          <div class="fw-semibold">
+                                              求人のスクショをここに
+                                          </div>
+                                          <div class="small text-secondary mt-1">
+                                              タップで選択 ・ ドラッグ&ドロップ ・ 貼り付け（Ctrl / Cmd + V）でもOK
+                                          </div>
+                                      </div>
+                                      <img id="preview" class="img-fluid rounded d-none" alt=""/>
+                                  </div>
 
-                            <!-- ドロップ / クリック / ペースト 対応ゾーン -->
-                            <div id="dropzone" class="dropzone mb-3">
-                                <div id="dz-idle">
-                                    <div class="fw-semibold">
-                                        求人のスクショをここに
-                                    </div>
-                                    <div class="small text-secondary mt-1">
-                                        タップで選択 ・ ドラッグ&ドロップ ・ 貼り付け（Ctrl / Cmd + V）でもOK
-                                    </div>
-                                </div>
-                                <img id="preview" class="img-fluid rounded d-none" alt=""/>
-                            </div>
+                                  <input type="file" id="file" name="image" accept="image/*" class="d-none"/>
+                                  <div id="filename" class="small text-secondary mb-3 d-none"></div>
+                                  <div id="file-error" class="text-danger small mb-2 d-none">求人のスクショを選んでください。</div>
+                                  <button type="submit" class="btn btn-primary w-100">
+                                      このバイトをチェック
+                                  </button>
+                              </div>
+                          </form>
+                      </div>
 
-                            <input type="file" id="file" name="image" accept="image/*" class="d-none"/>
-                            <div id="filename" class="small text-secondary mb-3 d-none"></div>
-                            <div id="file-error" class="text-danger small mb-2 d-none">まず求人のスクショを選んでね。</div>
-                            <button type="submit" class="btn btn-primary w-100">
-                                このバイトをチェック
-                            </button>
-                        </div>
-                    </form>
+                      <!-- ============ テキスト タブ ============ -->
+                      <div class="tab-pane fade" id="profile" role="tabpanel">
+                          <form
+                              id="form-text"
+                              method="post"
+                              action=""
+                              class="card mb-4"
+                          >
+                              <div class="card-body">
+                                  {% csrf_token %}
+                                  <input type="hidden" name="mode" value="text" />
+
+                                  <label for="text" class="form-label fw-semibold">求人の募集文を貼り付け</label>
+                                  <textarea
+                                      id="text"
+                                      name="text"
+                                      class="form-control mb-1"
+                                      placeholder="例）日給5万円以上／即日現金手渡し／簡単な受け取り作業のみ／Telegramで連絡ください…"
+                                  ></textarea>
+                                  <div class="small text-secondary mb-3">
+                                      募集ページや DM の文章をそのまま貼り付けてOKです。
+                                  </div>
+                                  <div id="text-error" class="text-danger small mb-2 d-none">求人の募集文を入力してください。</div>
+                                  <button type="submit" class="btn btn-primary w-100">
+                                      このバイトをチェック
+                                  </button>
+                              </div>
+                          </form>
+                      </div>
+                    </div>
+
 
                     <!-- 判定結果（result がある時だけ表示） -->
                     {% if result %}
@@ -208,26 +258,46 @@
 
                     <!-- 注意書き -->
                     <p class="text-secondary small border-top pt-3 mt-4 mb-0">
-                        これはAIによる目安です。まちがえることもあるので、少しでも不安なら家族や警察相談専用ダイヤル「#9110」に相談してください。送った画像や結果は保存されません。
+                        これはAIによる目安です。まちがえることもあるので、少しでも不安なら家族や警察相談専用ダイヤル「#9110」に相談してください。送った画像やテキスト、結果は保存されません。
                     </p>
                 </div>
             </div>
         </div>
 
-        <!-- ファイル選択 / ドロップ / ペースト の3経路に対応（判定処理は含みません） -->
+        <!-- Bootstrap 本体（タブ切り替え・後続スクリプトの bootstrap.Tab に必要なので先に読み込む） -->
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/js/bootstrap.bundle.min.js"></script>
+
+        <!-- スクショ(クリック/D&D/ペースト) と テキスト の両フォームに対応（判定処理は含みません） -->
         <script>
             (function () {
+              var overlay = document.getElementById('loading-overlay');
+              var msgEl   = document.getElementById('loading-msg');
+              var msgTimer = null;
+
+              // ===== 共通: 送信時のオーバーレイ表示 + 二重送信防止 =====
+              function startOverlay(form, messages) {
+                overlay.classList.add('show');
+                var btn = form.querySelector('button[type="submit"]');
+                if (btn) { btn.disabled = true; btn.textContent = 'チェック中…'; }
+
+                var i = 0;
+                if (msgEl) msgEl.textContent = messages[0];
+                if (msgTimer) clearInterval(msgTimer);
+                msgTimer = setInterval(function () {
+                  i = (i + 1) % messages.length;
+                  if (msgEl) msgEl.textContent = messages[i];
+                }, 2500);
+              }
+
+              // ===== スクショ タブ =====
               var input     = document.getElementById('file');
               var dropzone  = document.getElementById('dropzone');
               var idle      = document.getElementById('dz-idle');
               var preview   = document.getElementById('preview');
               var filename  = document.getElementById('filename');
               var fileError = document.getElementById('file-error');
-              var form      = input.closest('form');
-              var overlay   = document.getElementById('loading-overlay');
-              var msgEl     = document.getElementById('loading-msg');
+              var imageForm = document.getElementById('form-image');
 
-              // ---- 受け取ったファイルを input に反映（クリック / D&D / ペースト共通） ----
               function setFile(file) {
                 if (!file || !file.type.startsWith('image/')) return;
 
@@ -243,15 +313,15 @@
                 filename.textContent = file.name || 'pasted-image';
                 filename.classList.remove('d-none');
 
-                hideError();  // 選択できたのでエラー表示を消す
+                hideFileError();
               }
 
               function hasFile() { return input.files && input.files.length > 0; }
-              function hideError() {
+              function hideFileError() {
                 if (fileError) fileError.classList.add('d-none');
                 dropzone.classList.remove('border-danger');
               }
-              function showError() {
+              function showFileError() {
                 if (fileError) fileError.classList.remove('d-none');
                 dropzone.classList.add('border-danger');
                 dropzone.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -281,8 +351,10 @@
                 if (files && files[0]) setFile(files[0]);
               });
 
-              // 3) ペースト
+              // 3) ペースト（スクショタブが開いている時だけ反応させる）
               window.addEventListener('paste', function (e) {
+                var homeTab = document.getElementById('home');
+                if (!homeTab || !homeTab.classList.contains('active')) return;
                 var items = (e.clipboardData && e.clipboardData.items) || [];
                 for (var i = 0; i < items.length; i++) {
                   if (items[i].type && items[i].type.startsWith('image/')) {
@@ -292,36 +364,68 @@
                 }
               });
 
-              // ---- 送信時: JSでファイル有無を検証してからオーバーレイ ----
-              form.addEventListener('submit', function (e) {
+              // スクショ送信時
+              imageForm.addEventListener('submit', function (e) {
                 if (!hasFile()) {
-                  e.preventDefault();   // 送信を止める（フリーズさせない）
-                  showError();
+                  e.preventDefault();
+                  showFileError();
                   return;
                 }
-
-                // ファイルあり → 送信は継続。オーバーレイ表示 + 二重送信防止
-                overlay.classList.add('show');
-                var btn = form.querySelector('button[type="submit"]');
-                if (btn) { btn.disabled = true; btn.textContent = 'チェック中…'; }
-
-                var msgs = [
+                startOverlay(imageForm, [
                   'スクショを読み取り中…',
                   'あやしいサインを照合中…',
                   '総合的にチェック中…'
-                ];
-                var i = 0;
-                setInterval(function () {
-                  i = (i + 1) % msgs.length;
-                  if (msgEl) msgEl.textContent = msgs[i];
-                }, 2500);
+                ]);
               });
 
-              // ブラウザ「戻る」でキャッシュ復元されたときに状態をリセット
+              // ===== テキスト タブ =====
+              var textForm  = document.getElementById('form-text');
+              var textArea  = document.getElementById('text');
+              var textError = document.getElementById('text-error');
+
+              textArea.addEventListener('input', function () {
+                if (textError) textError.classList.add('d-none');
+                textArea.classList.remove('is-invalid');
+              });
+
+              textForm.addEventListener('submit', function (e) {
+                if (!textArea.value.trim()) {
+                  e.preventDefault();
+                  if (textError) textError.classList.remove('d-none');
+                  textArea.classList.add('is-invalid');
+                  textArea.focus();
+                  return;
+                }
+                startOverlay(textForm, [
+                  '募集文を読み取り中…',
+                  'あやしいサインを照合中…',
+                  '総合的にチェック中…'
+                ]);
+              });
+
+              // ===== タブの状態を記憶（送信後リロードでも同じタブを開く） =====
+              var tabLinks = document.querySelectorAll('[data-bs-toggle="tab"]');
+              tabLinks.forEach(function (t) {
+                t.addEventListener('shown.bs.tab', function (e) {
+                  try { localStorage.setItem('bj-tab', e.target.getAttribute('href')); } catch (_) {}
+                });
+              });
+              try {
+                var saved = localStorage.getItem('bj-tab');
+                if (saved && window.bootstrap) {
+                  var link = document.querySelector('[data-bs-toggle="tab"][href="' + saved + '"]');
+                  if (link) bootstrap.Tab.getOrCreateInstance(link).show();
+                }
+              } catch (_) {}
+
+              // ===== 「戻る」でキャッシュ復元されたときに状態をリセット =====
               window.addEventListener('pageshow', function () {
                 overlay.classList.remove('show');
-                var btn = form.querySelector('button[type="submit"]');
-                if (btn) { btn.disabled = false; btn.textContent = 'このバイトをチェック'; }
+                if (msgTimer) { clearInterval(msgTimer); msgTimer = null; }
+                document.querySelectorAll('form button[type="submit"]').forEach(function (b) {
+                  b.disabled = false;
+                  b.textContent = 'このバイトをチェック';
+                });
               });
             })();
         </script>

@@ -25,7 +25,7 @@ def _pil_to_part(img: Image.Image) -> types.Part:
     img.save(buffer,format='PNG')
     return types.Part.from_bytes(data=buffer.getvalue(),mime_type="image/png")
 
-def job_offer_risk_assess(job_offer:Image.Image)->RiskReportSchema:
+def job_offer_risk_assess(job_offer)->RiskReportSchema:
     """
     求人の画像をGemini APIに投げて、闇バイトへの関与のリスク度合いを評価する
     Args:
@@ -33,6 +33,10 @@ def job_offer_risk_assess(job_offer:Image.Image)->RiskReportSchema:
     Returns:
         リスクアセスの結果 (ReskReportSchema)
     """
+    if not isinstance(job_offer,Image.Image) and not isinstance(job_offer,str):
+        logger.error('Type Error: job_offer must be image or text')
+        return None
+
     # 0. VIEW TEST MODEの場合、実際にはAPIを叩かず、サンプルを出力する
     if settings.VIEW_TEST_MODE:
         logger.warning('VIEW TEST MODE: Show only response sample, NOT an actual LLM response.')
@@ -59,7 +63,7 @@ def job_offer_risk_assess(job_offer:Image.Image)->RiskReportSchema:
         response_mime_type="application/json",
         response_schema=RiskReportSchema
     )
-    # 2. プロンプトの定型文の読み込み
+    # 2. プロンプトの整形
     logger.info('Loading prompt template...')
     try:
         with open(PROMPT_PATH,'r',encoding='utf-8') as f:
@@ -67,10 +71,13 @@ def job_offer_risk_assess(job_offer:Image.Image)->RiskReportSchema:
     except FileNotFoundError:
         logging.error(f"Error: Prompt template file not found {PROMPT_PATH}")
         return None
-
+    if isinstance(job_offer,Image.Image):
+        contents = [prompt_text,_pil_to_part(job_offer)]
+    elif isinstance(job_offer,str):
+        contents_list = [prompt_text,'# 評価対象の求人',job_offer]
+        contents = '\n'.join(contents_list)
     # 3. Gemini APIを叩く
     logger.info('Requesting to Gemini API...')
-    contents = [prompt_text,_pil_to_part(job_offer)]
     try:
         response = client.models.generate_content(
             model='gemini-3.5-flash',
