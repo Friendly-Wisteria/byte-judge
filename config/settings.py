@@ -115,11 +115,6 @@ LOGGING = {
             'level': 'DEBUG',  # 開発時はDEBUGなどに変更
             'propagate': False,
         },
-        'apps.analytics': {
-            'handlers': ['console'],
-            'level': 'DEBUG',  # 開発時はDEBUGなどに変更
-            'propagate': False,
-        },
     },
 }
 
