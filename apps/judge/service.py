@@ -3,8 +3,8 @@ from google import genai
 from PIL import Image
 from google.genai import types,errors
 from .schema import RiskReportSchema
-from .tests import FIXTURES
-from config import settings
+from .fixtures import FIXTURES
+from django.conf import settings
 from pathlib import Path
 import io
 import logging
@@ -69,7 +69,7 @@ def job_offer_risk_assess(job_offer)->RiskReportSchema:
         with open(PROMPT_PATH,'r',encoding='utf-8') as f:
             prompt_text = f.read()
     except FileNotFoundError:
-        logging.error(f"Error: Prompt template file not found {PROMPT_PATH}")
+        logger.error(f"Error: Prompt template file not found {PROMPT_PATH}")
         return None
     if isinstance(job_offer,Image.Image):
         contents = [prompt_text,_pil_to_part(job_offer)]
@@ -84,8 +84,14 @@ def job_offer_risk_assess(job_offer)->RiskReportSchema:
             contents=contents,
             config=config
         )
-    except errors.ServerError as e:
-        logger.error(f"Server error:{e.code} {e.status}: {e.message}",exc_info=False)
+    except errors.APIError as e:
+        # API 由来のエラー（4xx=ClientError / 5xx=ServerError など）。
+        # 詳細はログのみに残し、ユーザーには見せない（呼び出し側で汎用メッセージを表示）。
+        logger.error(f"Gemini API error: {e.code} {e.status}: {e.message}", exc_info=False)
+        return None
+    except Exception:
+        # ネットワーク断・タイムアウト・想定外の例外。詳細はログのみに残す。
+        logger.exception("Unexpected error while requesting Gemini API")
         return None
     # 4. レスポンスを、RiskReportSchemaでパースして出力
     # 4-1. パースできない場合はエラー

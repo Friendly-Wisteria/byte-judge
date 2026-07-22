@@ -45,6 +45,3 @@ class RiskReportSchema(BaseModel):
     @property
     def bs_color(self) -> str:
         return _LEVEL_COLOR[self.level]
-
-class ConfigSchema(BaseModel):
-    enable_data_collection: bool = False
