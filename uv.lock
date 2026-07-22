@@ -8,7 +8,6 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "django" },
-    { name = "django-encrypted-model-fields" },
     { name = "django-environ" },
     { name = "google-genai" },
     { name = "pillow" },
@@ -18,7 +17,6 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "django", specifier = ">=6.0.7" },
-    { name = "django-encrypted-model-fields", specifier = ">=0.6.5" },
     { name = "django-environ", specifier = ">=0.14.0" },
     { name = "google-genai", specifier = ">=2.12.1" },
     { name = "pillow", specifier = ">=12.3.0" },
@@ -256,19 +254,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/89/55/664f24ff81c9ea19cb7dfc851afeae1f3c2390c7aee01d4ded68b5c1580d/django-6.0.7.tar.gz", hash = "sha256:2998503fc083124fb58037084bfa00de323c7c743f05f1b4284e77bff0ab8890", size = 10921299, upload-time = "2026-07-07T13:51:26.485Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ba/ec/1ce5334b6a2c52ce619c23a0be8d366a57a0e080ebb2d88266e5c849157c/django-6.0.7-py3-none-any.whl", hash = "sha256:a037427c2288443a8c02a1b02295a31c239663aa682bc50b1976afb7cf6a769e", size = 8373344, upload-time = "2026-07-07T13:51:20.007Z" },
-]
-
-[[package]]
-name = "django-encrypted-model-fields"
-version = "0.6.5"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "cryptography" },
-    { name = "django" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/35/44/e4273d48f406b23604cf946912421583a659044d5e521799d1cfd74222c5/django-encrypted-model-fields-0.6.5.tar.gz", hash = "sha256:8bd21c5565c0d64ec4dbd375ad34fea68b4da2db871dec3fa71fe7b5e4221c99", size = 7259, upload-time = "2022-02-24T22:52:12.415Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e4/36/1b86079a489f181e33bd83600127e7b3b73c66cd609ac672e58de93ed9a9/django_encrypted_model_fields-0.6.5-py3-none-any.whl", hash = "sha256:b21bbdd8ae2e1a0ea37a5049b3ba46e6e63bf287ad241219a058fac1070796cc", size = 8934, upload-time = "2022-02-24T22:52:13.955Z" },
 ]
 
 [[package]]
