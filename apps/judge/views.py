@@ -29,8 +29,6 @@ class IndexView(FormView):
         else:
             job_offer_data = text                # str
 
-        logger.info(f'data format: {type(job_offer_data)}')
-
         # 型判別は job_offer_risk_assess 内の isinstance に任せて、そのまま渡す
         result = job_offer_risk_assess(job_offer_data)
 

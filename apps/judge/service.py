@@ -80,10 +80,11 @@ def job_offer_risk_assess(job_offer)->RiskReportSchema:
     logger.info('Requesting to Gemini API...')
     try:
         response = client.models.generate_content(
-            model='gemini-3.5-flash',
+            model=settings.GEMINI_MODEL,
             contents=contents,
             config=config
         )
+        logger.info(f'Gemini Model: {response.model_version}')
     except errors.APIError as e:
         # API 由来のエラー（4xx=ClientError / 5xx=ServerError など）。
         # 詳細はログのみに残し、ユーザーには見せない（呼び出し側で汎用メッセージを表示）。
