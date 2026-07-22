@@ -155,3 +155,5 @@ MESSAGE_TAGS = {
 }
 
 VIEW_TEST_MODE = env.bool('VIEW_TEST_MODE', default=False)
+
+GEMINI_MODEL = env('GEMINI_MODEL')
