@@ -2,7 +2,7 @@ from django.views.generic import FormView
 from django.contrib import messages
 from .forms import JobOfferRiskAssessForm
 from .service import job_offer_risk_assess
-from config import settings
+from django.conf import settings
 from PIL import Image
 import logging
 
@@ -33,6 +33,15 @@ class IndexView(FormView):
 
         # 型判別は job_offer_risk_assess 内の isinstance に任せて、そのまま渡す
         result = job_offer_risk_assess(job_offer_data)
+
+        # 判定に失敗した場合（型エラー / API エラー / パース失敗など）は
+        # サービス層が None を返す。結果は表示せず、エラーメッセージを提示する。
+        if result is None:
+            logger.error('Risk assessment failed: service returned None')
+            messages.error(self.request, '判定に失敗しました。時間をおいて、もう一度お試しください。')
+            return self.render_to_response(
+                self.get_context_data(form=form)
+            )
 
         # view test modeの時の警告表示
         if settings.VIEW_TEST_MODE:

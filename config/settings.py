@@ -154,4 +154,4 @@ MESSAGE_TAGS = {
     messages.ERROR: 'danger',  # error を danger にマッピング
 }
 
-VIEW_TEST_MODE = env('VIEW_TEST_MODE').lower() in ['true']
+VIEW_TEST_MODE = env.bool('VIEW_TEST_MODE', default=False)
