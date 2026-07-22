@@ -9,6 +9,15 @@ wheels/
 # Virtual environments
 .venv
 .env
+.env.*
+*.env
 db.sqlite3
+
+# Django collected/uploaded
+/staticfiles/
+/media/
+
+# macOS
+.DS_Store
 
 .claude/
