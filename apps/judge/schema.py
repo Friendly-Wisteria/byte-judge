@@ -1,15 +1,19 @@
 from enum import StrEnum
-from pydantic import BaseModel,Field,computed_field
+
+from pydantic import BaseModel, Field, computed_field
+
 
 class Level(StrEnum):
     DANGER = "危険"
     CAUTION = "要注意"
     SAFE = "安全"
 
+
 class Severity(StrEnum):
     HIGH = "高"
     MID = "中"
     LOW = "低"
+
 
 # 表示ラベル → Bootstrap 配色クラスの対応表（表示専用）
 _LEVEL_COLOR = {
@@ -22,6 +26,7 @@ _SEVERITY_COLOR = {
     Severity.MID: "warning",
     Severity.LOW: "secondary",
 }
+
 
 class Signal(BaseModel):
     name: str = Field(description="シグナル名")
