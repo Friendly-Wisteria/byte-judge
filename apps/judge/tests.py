@@ -279,3 +279,38 @@ class LogsNeverContainInputTests(TestCase):
         request = response.wsgi_request
         cleansed = SafeExceptionReporterFilter().get_post_parameters(request)
         self.assertNotIn(MARKER, str(dict(cleansed)))
+
+
+@override_settings(VIEW_TEST_MODE=True)
+class SessionNeverContainsInputTests(TestCase):
+    """判定後のセッションに求人テキストが残らないことの検証。
+
+    現状のフローは POST → そのままレンダリングでリダイレクトを挟まないため、
+    判定結果をセッションで受け渡す必要がない。将来リダイレクト方式に変えて
+    セッション経由にした場合に、ここで気づけるようにしておく。
+    """
+
+    def test_session_and_cookies_are_free_of_the_job_text(self):
+        response = self.client.post("/", {"mode": "text", "text": JOB_TEXT})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "危険度")
+
+        # セッションの中身
+        self.assertNotIn(MARKER, str(dict(self.client.session.items())))
+
+        # クッキー（messages は既定で CookieStorage に載る）
+        for cookie in response.cookies.values():
+            self.assertNotIn(MARKER, cookie.value)
+
+        # 画面に出すメッセージ
+        for message in response.context["messages"]:
+            self.assertNotIn(MARKER, str(message))
+
+    def test_no_session_row_is_created(self):
+        """そもそもセッションが作られないこと（＝DB に何も書かれないこと）。"""
+        from django.contrib.sessions.models import Session
+
+        self.client.post("/", {"mode": "text", "text": JOB_TEXT})
+
+        self.assertEqual(Session.objects.count(), 0, "セッション行が作成されている")
+        self.assertNotIn("sessionid", self.client.cookies)
