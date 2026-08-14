@@ -8,6 +8,7 @@ import anthropic
 import pydantic
 from django.apps import apps
 from django.conf import settings
+from django.views.decorators.debug import sensitive_variables
 from PIL import Image, ImageOps
 
 from .fixtures import FIXTURES
@@ -27,6 +28,24 @@ MAX_TOKENS = 16000
 MAX_IMAGE_LONG_EDGE = 2576
 
 logger = logging.getLogger(__name__)
+
+def _silence_sdk_payload_logging():
+    """anthropic SDK が送信ペイロード全文をログに出さないようにする。
+
+    環境変数 ANTHROPIC_LOG=debug が設定されると、SDK は送信内容
+    （求人テキスト・画像の base64）を "Request options" として DEBUG ログに
+    出力する。環境変数ひとつで「入力内容を残さない」約束が崩れないよう、
+    SDK ロガーを INFO 未満に下げさせない。
+
+    SDK 側のレベル設定は anthropic の import 時に済んでいるため、
+    この呼び出し（import より後）で上書きできる。
+    """
+    sdk_logger = logging.getLogger("anthropic")
+    if sdk_logger.getEffectiveLevel() < logging.INFO:
+        sdk_logger.setLevel(logging.INFO)
+
+
+_silence_sdk_payload_logging()
 
 
 def _pil_to_image_block(img: Image.Image) -> dict:
@@ -55,6 +74,7 @@ def _pil_to_image_block(img: Image.Image) -> dict:
     }
 
 
+@sensitive_variables()
 def job_offer_risk_assess(job_offer) -> RiskReportSchema:
     """
     求人の画像をClaude APIに投げて、闇バイトへの関与のリスク度合いを評価する
@@ -142,10 +162,21 @@ def job_offer_risk_assess(job_offer) -> RiskReportSchema:
         # ネットワーク断・タイムアウト。詳細はログのみに残す。
         logger.exception("Network error while requesting Claude API")
         return None
-    except pydantic.ValidationError:
+    except pydantic.ValidationError as e:
         # LLMの出力がスキーマを満たさない（必須項目が空など）。
         # 部分的な結果を画面に出さず、確実にエラーへ倒す。
-        logger.error("Response did not satisfy RiskReportSchema", exc_info=True)
+        # ValidationError の文字列表現には不適合だった値そのもの（求人文を
+        # 引用した summary など）が input_value として含まれるため、トレースは
+        # 出さず、「どの項目がどの理由で落ちたか」だけを残す。
+        logger.error(
+            "Response did not satisfy RiskReportSchema: %s",
+            [
+                (list(d["loc"]), d["type"])
+                for d in e.errors(
+                    include_input=False, include_url=False, include_context=False
+                )
+            ],
+        )
         return None
     except Exception:
         # 想定外の例外。詳細はログのみに残す。
