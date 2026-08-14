@@ -2,6 +2,7 @@ import base64
 import io
 import logging
 import random
+import re
 from pathlib import Path
 
 import anthropic
@@ -27,7 +28,24 @@ MAX_TOKENS = 16000
 # API 側でどのみち自動縮小されるため、送信前に合わせる。
 MAX_IMAGE_LONG_EDGE = 2576
 
+# 求人テキストを <job_offer> で囲んで渡すため、テキスト側に同じタグが
+# 現れると囲みの境界を偽装できてしまう（例: 本文中で </job_offer> を
+# 閉じてから、その外側に命令文を書く）。このタグだけを対象に、
+# 大文字小文字とタグ内の空白の揺れも含めて拾う。
+_JOB_OFFER_TAG_RE = re.compile(r"<\s*(/?)\s*job_offer\s*>", re.IGNORECASE)
+
 logger = logging.getLogger(__name__)
+
+
+def _escape_job_offer_tags(text: str) -> str:
+    """求人テキスト内の <job_offer> / </job_offer> だけを無害化する。
+
+    タグとして解釈されない形（&lt;job_offer&gt;）に置き換える。文字列
+    自体は残るので、求人本文の意味は変わらず判定にも影響しない。
+    他のタグや、タグ以外の '<' はそのまま残す。
+    """
+    return _JOB_OFFER_TAG_RE.sub(lambda m: f"&lt;{m.group(1)}job_offer&gt;", text)
+
 
 def _silence_sdk_payload_logging():
     """anthropic SDK が送信ペイロード全文をログに出さないようにする。
@@ -124,7 +142,15 @@ def job_offer_risk_assess(job_offer) -> RiskReportSchema:
             logger.exception("Failed to convert uploaded image")
             return None
     else:
-        content = [{"type": "text", "text": f"# 評価対象の求人\n{job_offer}"}]
+        # マークダウン等をそのまま渡せるよう求人を <job_offer> で囲む。
+        # テキスト側の同名タグは、境界の偽装に使えないよう無害化しておく。
+        safe_job_offer = _escape_job_offer_tags(job_offer)
+        content = [
+            {
+                "type": "text",
+                "text": f"# 評価対象の求人\n<job_offer>\n{safe_job_offer}\n</job_offer>",
+            }
+        ]
 
     # 4. Claude APIを叩く
     logger.info("Requesting to Claude API...")
