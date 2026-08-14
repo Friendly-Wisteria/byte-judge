@@ -3,6 +3,7 @@ import logging
 from django.conf import settings
 from django.contrib import messages
 from django.utils.decorators import method_decorator
+from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from django.views.generic import FormView
 from PIL import Image
@@ -15,6 +16,9 @@ logger = logging.getLogger(__name__)
 
 # エラー報告（DEBUG=True 時の 500 ページ、ADMINS 設定時の管理者メール）に
 # POST の求人テキストが載らないようにする。
+# あわせて、判定結果のページがブラウザやプロキシのキャッシュに保存されないよう
+# no-store を返す。履歴と「戻る」操作までは防げない点に注意。
+@method_decorator(never_cache, name="dispatch")
 @method_decorator(sensitive_post_parameters(), name="dispatch")
 class IndexView(FormView):
     template_name = "judge/index.html"

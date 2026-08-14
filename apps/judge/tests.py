@@ -314,3 +314,23 @@ class SessionNeverContainsInputTests(TestCase):
 
         self.assertEqual(Session.objects.count(), 0, "セッション行が作成されている")
         self.assertNotIn("sessionid", self.client.cookies)
+
+
+class ResultPageIsNotCachedTests(TestCase):
+    """判定結果のページがキャッシュに保存されない指定になっていることの検証。"""
+
+    @override_settings(VIEW_TEST_MODE=True)
+    def test_result_response_forbids_storing(self):
+        response = self.client.post("/", {"mode": "text", "text": JOB_TEXT})
+
+        self.assertEqual(response.status_code, 200)
+        cache_control = response.headers.get("Cache-Control", "")
+        # no-store が外れると、判定結果がブラウザのディスクキャッシュに残りうる
+        self.assertIn("no-store", cache_control)
+        self.assertIn("private", cache_control)
+
+    def test_form_page_forbids_storing(self):
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("no-store", response.headers.get("Cache-Control", ""))
