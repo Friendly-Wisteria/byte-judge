@@ -2,6 +2,8 @@ import logging
 
 from django.conf import settings
 from django.contrib import messages
+from django.utils.decorators import method_decorator
+from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from django.views.generic import FormView
 from PIL import Image
 
@@ -11,7 +13,9 @@ from .service import job_offer_risk_assess
 logger = logging.getLogger(__name__)
 
 
-# Create your views here.
+# エラー報告（DEBUG=True 時の 500 ページ、ADMINS 設定時の管理者メール）に
+# POST の求人テキストが載らないようにする。
+@method_decorator(sensitive_post_parameters(), name="dispatch")
 class IndexView(FormView):
     template_name = "judge/index.html"
     form_class = JobOfferRiskAssessForm
@@ -25,6 +29,8 @@ class IndexView(FormView):
             )
         return super().get(request, *args, **kwargs)
 
+    # 例外レポートのローカル変数一覧に求人テキスト・画像が載らないようにする
+    @sensitive_variables()
     def form_valid(self, form):
         # キーの有無ではなく「値」で分岐する
         image = form.cleaned_data.get("image")
