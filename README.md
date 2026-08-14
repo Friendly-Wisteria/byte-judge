@@ -2,7 +2,7 @@
 
 **闇バイトかどうか、自分では見抜きにくい求人を、LLM が常識的な観点から危険度評価する Web アプリです。**
 
-求人の**テキスト**または**スクリーンショット画像**を貼り付けるだけで、Gemini が「闇バイト（特殊詐欺・強盗・口座やカードの受け渡しなどの犯罪加担）」の兆候を評価し、危険度スコアと根拠つきの判定を返します。主なターゲットユーザーは、闇バイトの標的になりやすい 10〜20 代前半の若年層です。
+求人の**テキスト**または**スクリーンショット画像**を貼り付けるだけで、Claude が「闇バイト（特殊詐欺・強盗・口座やカードの受け渡しなどの犯罪加担）」の兆候を評価し、危険度スコアと根拠つきの判定を返します。主なターゲットユーザーは、闇バイトの標的になりやすい 10〜20 代前半の若年層です。
 
 > ⚠️ **免責**：本ツールの判定は LLM による**参考情報**であり、法的・最終的な判断ではありません。「安全」と表示された場合でも危険な求人である可能性は残ります。少しでも不安を感じたら、応募・連絡を行う前に、警察相談専用電話 **#9110** や消費生活センター **188（いやや）** などの正規の窓口に相談してください。
 
@@ -14,7 +14,7 @@
 - **危険度スコア（0〜100）と3段階ラベル**：`危険` / `要注意` / `安全`
 - **根拠つきシグナル表示**：「異常な高額報酬」「秘匿アプリへの誘導」など、検出した兆候ごとに深刻度（高/中/低）と判断根拠を提示
 - **推奨アクションの提示**：ユーザーが次に取るべき行動をわかりやすい「ですます調」で案内
-- **構造化出力**：Gemini の `response_schema`（Pydantic）で JSON を強制し、パース失敗時は結果を表示せずエラー処理
+- **構造化出力**：Claude の structured outputs（Pydantic スキーマ）で JSON を強制し、パース失敗時は結果を表示せずエラー処理
 
 ## 判定の観点（一例）
 
@@ -30,9 +30,11 @@
 
 ## 使用している LLM
 
-- **Google Gemini（Flash-Lite 系）** — `google-genai` SDK 経由
-- モデル名は環境変数 `GEMINI_MODEL` で切り替え可能（例：`gemini-flash-lite-latest`）
+- **Anthropic Claude** — `anthropic` SDK 経由
+- モデル名は環境変数 `CLAUDE_MODEL` で切り替え可能（既定：`claude-opus-5`）
 - 出力は `RiskReportSchema`（Pydantic）で構造化。マルチモーダル入力（画像＋プロンプト）に対応
+- **判定プロンプトは `system`、評価対象の求人は `user` に分離**して送信します。求人文中の文言が LLM への命令として解釈されにくくなります（プロンプトインジェクション対策）
+- 安全機構による拒否（`stop_reason: "refusal"`）や出力打ち切り（`max_tokens`）を検出し、その場合は判定結果を表示せずエラー処理します
 
 ## 技術スタック
 
@@ -40,7 +42,7 @@
 |---|---|
 | 言語 | Python 3.13 |
 | フレームワーク | Django 6.0 |
-| LLM | Google Gemini（`google-genai`） |
+| LLM | Anthropic Claude（`anthropic`） |
 | バリデーション | Pydantic 2 |
 | 画像処理 | Pillow |
 | 設定管理 | django-environ（`.env`） |
@@ -68,9 +70,9 @@ uv sync
 SECRET_KEY=<Django のシークレットキー>
 DEBUG=True
 
-# Gemini
-GEMINI_API_KEY=<Google AI Studio で取得した API キー> **プライバシー保護のため、課金を有効化した「有料Tier」のGemini APIキーを使用してください**
-GEMINI_MODEL=gemini-flash-lite-latest
+# Anthropic (Claude)
+ANTHROPIC_API_KEY=<Claude Console で取得した API キー>
+CLAUDE_MODEL=claude-opus-5
 
 # LLM を叩かず固定サンプルを返す配線テストモード（任意・既定 False）
 VIEW_TEST_MODE=False
@@ -80,7 +82,9 @@ VIEW_TEST_MODE=False
   ```bash
   uv run python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
   ```
-- `GEMINI_API_KEY` は [Google AI Studio](https://aistudio.google.com/) で発行してください。
+- `ANTHROPIC_API_KEY` は [Claude Console](https://platform.claude.com/) で発行してください。
+- `CLAUDE_MODEL` は `claude-sonnet-5`（コスト重視）や `claude-haiku-4-5`（最安）にも切り替えられます。
+  ただし **`claude-fable-5` / `claude-mythos-5` は使用しないでください**（後述）。
 
 ### 3. データベースの初期化と起動
 
@@ -95,7 +99,7 @@ uv run python manage.py runserver
 
 ## VIEW_TEST_MODE（配線テストモード）
 
-`VIEW_TEST_MODE=True` にすると、**実際に Gemini API を呼び出さず**、固定サンプル（`apps/judge/fixtures.py`）からランダムに判定結果を返します。UI や画面遷移の確認に使えます。
+`VIEW_TEST_MODE=True` にすると、**実際に Claude API を呼び出さず**、固定サンプル（`apps/judge/fixtures.py`）からランダムに判定結果を返します。UI や画面遷移の確認に使えます。
 
 このモード時は画面に「LLM による判定を中止しています。表示される判定結果は使用しないでください。」という警告が表示されます。
 
@@ -107,7 +111,7 @@ uv run python manage.py runserver
 apps/judge/
 ├── views.py          # 入力フォームと結果表示（FormView）
 ├── forms.py          # 画像サイズ/解像度の検証（decompression bomb 対策含む）
-├── service.py        # Gemini API 呼び出し・プロンプト整形・結果パース
+├── service.py        # Claude API 呼び出し・プロンプト整形・結果パース
 ├── schema.py         # RiskReportSchema（score / level / signals / advice）
 ├── fixtures.py       # VIEW_TEST_MODE 用の固定サンプル
 ├── templates/judge/
@@ -122,30 +126,60 @@ config/               # Django プロジェクト設定
 - 画像解像度：最大 約 33MP（8K スクショ相当まで）
 - テキスト or 画像のいずれか一方は必須
 
+---
+
 ## データの取り扱い
 
+### 本アプリ側
+
 - アップロードされた求人テキスト・画像は、**危険度の解析のためにのみ使用します。**
-- 解析処理のため、内容は外部の LLM API（**Google Gemini API**）に送信されます。
-  本アプリは Gemini の**有料ティア（課金アカウント）**を利用しており、Google の
-  利用規約上、送信されたプロンプト・レスポンスが Google の製品改善・モデル学習に
-  使われることはありません。
-- **入力内容・判定結果は、サーバー側のデータベースには保存しません。**
+- **入力内容・判定結果は、本アプリのサーバー側データベースには保存しません。**
   解析後、結果は画面に表示されるのみで永続化されません。
+
+### LLM API（Anthropic）側
+
+解析処理のため、入力内容は外部の LLM API（**Anthropic Claude API**）に送信されます。
+
+**本アプリは現時点で Zero Data Retention（ZDR）契約を締結していません。**通常の Commercial API 利用における Anthropic 側の取り扱いは以下の通りです。
+
+- 送信されたプロンプト・レスポンスが、Anthropic の**モデル学習に使用されることはありません**（利用者の明示的な許可がない限り）。
+- 送信内容は Anthropic のバックエンドで**最大 30 日以内に削除されます**。
+  送信直後に破棄されるわけではない点にご留意ください。
+- ただし、Anthropic の自動検知システムが利用ポリシー違反としてフラグを立てた場合、
+  または法令上の要請がある場合には、**最大 2 年間**保持されることがあります。
+- 本アプリがキャッシュ対象としているのは**固定の判定プロンプトのみ**で、
+  ユーザーが入力した求人テキスト・画像はキャッシュされません。
+
+### ユーザーの皆さまへのお願い
+
 - スクリーンショットには、募集者やご自身の個人情報（電話番号・SNS アカウント・
-  DM 画面など）が写り込む場合があります。アップロード前に、不要な個人情報の
-  マスキングをご検討ください。
+  DM 画面など）が写り込む場合があります。上記の通り、送信内容は最大 30 日間
+  外部（Anthropic）に保持されます。**アップロード前に、不要な個人情報のマスキングを
+  強くおすすめします。**
+- 判定に必要なのは「募集の文面」です。氏名・住所・電話番号・口座番号などが
+  写っている部分は、塗りつぶしてからアップロードしてください。
+
+---
 
 ## セルフホスト・再配布される方へ（重要）
 
 - 本アプリは、ユーザーがアップロードした求人テキスト・画像を外部の
-  Google Gemini API に送信します。これらには個人情報や、犯罪に関わる
+  Anthropic Claude API に送信します。これらには個人情報や、犯罪に関わる
   機微な内容が含まれ得ます。
-- **必ず課金を有効化した「有料ティア」の Gemini API キーを使用してください。**
-  無料枠（Google AI Studio 無料枠）では、送信内容が Google の製品改善・
-  人間によるレビューに使われる可能性があり、本アプリの利用者（主に若年層）の
-  個人情報を保護できません。
-- リポジトリに同梱の `.env` のキーは公開していません。フォーク・セルフホスト
-  する場合は、ご自身で取得した有料ティアのキーを設定してください。
+- **必ずご自身で発行した Claude API キー（Commercial 組織のキー）を使用してください。**
+  リポジトリに同梱の `.env` のキーは公開していません。
+- **`claude-fable-5` / `claude-mythos-5` は `CLAUDE_MODEL` に設定しないでください。**
+  これらは Anthropic の Covered Models に指定されており、**30 日間のデータ保持が必須**で、
+  ZDR を適用できません。本アプリの用途にはオーバースペックでもあります。
+- **データ保持をさらに短くしたい場合**は、Anthropic のセールスに連絡して
+  Zero Data Retention（ZDR）契約を締結してください。ZDR は組織単位で有効化され、
+  本アプリが使用する Messages API は適用対象です（Batch・Files API・Managed Agents は対象外）。
+  ZDR 適用後も、ポリシー違反としてフラグされた場合や法令上の要請がある場合の保持は残ります。
+- ZDR を有効化した組織では **CORS が使用できません**。本アプリは Django のサーバー
+  サイドから API を呼び出す構成のため影響はありませんが、フロントエンドから直接
+  API を叩く形に改造する場合はご注意ください。
+- 上記の「データの取り扱い」の記載は、**ZDR なし**の前提で書かれています。
+  運用形態を変更した場合は、この節とあわせて必ず記載を更新してください。
 - 本ソフトウェアは無保証で提供されます（ライセンス条項参照）。セルフホスト
   環境での運用・データ管理の責任は、運用者にあります。
 
