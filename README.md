@@ -68,6 +68,7 @@ uv sync
 ```dotenv
 # Django
 SECRET_KEY=<Django のシークレットキー>
+# 本番環境では False にすること（「本番環境にデプロイする場合の必須設定」を参照）
 DEBUG=True
 
 # Anthropic (Claude)
@@ -208,6 +209,55 @@ config/               # Django プロジェクト設定
   **アップロード前に、不要な個人情報を塗りつぶすことを強くおすすめします。**
 - 判定に必要なのは「募集の文面」だけです。氏名・住所・電話番号・口座番号・
   顔写真などが写っている部分は、隠してからアップロードしてください。
+
+---
+
+## 本番環境にデプロイする場合の必須設定
+
+**以下はアプリのコード側では対応していません。デプロイする側で必ず設定してください。**
+ローカルで動かすだけなら不要です。
+
+### 1. `DEBUG` を `False` にする
+
+`.env` のサンプルおよび上記のセットアップ手順は、ローカル開発を前提に
+`DEBUG=True` になっています。**本番環境では必ず `DEBUG=False` にしてください。**
+
+`DEBUG=True` のまま公開すると、サーバー内部でエラーが起きたときに、詳細な
+エラーページがリクエストした相手にそのまま返ります。このページには設定値・
+リクエストヘッダ・Cookie などが含まれます。
+
+- 求人テキストなど POST された内容自体は、`sensitive_post_parameters` /
+  `sensitive_variables` によりマスクされます（`apps/judge/views.py`、
+  `apps/judge/service.py`）。ただしそれ以外の情報は表示されるため、
+  `DEBUG=False` は依然として必須です。
+- `config/settings.py` は、環境変数 `DEBUG` が未設定のときは `False` に
+  フォールバックします。`DEBUG=True` を明示しない限り、本番で有効に
+  なることはありません。
+
+### 2. `ALLOWED_HOSTS` を設定する
+
+`config/settings.py` の `ALLOWED_HOSTS` は **空リストのままです。**
+`DEBUG=False` の状態では、Django は空の `ALLOWED_HOSTS` に対してすべての
+リクエストを拒否します（`DisallowedHost`）。**このままではアプリが動きません。**
+
+環境変数からは読んでいないため、`config/settings.py` を直接編集するか、
+環境変数から読み込む形に変更してください。
+
+```python
+# 直接指定する場合
+ALLOWED_HOSTS = ['example.com', 'www.example.com']
+
+# 環境変数から読み込む場合（django-environ）
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[])
+```
+
+### 3. その他
+
+- `SECRET_KEY` は本番専用の値を新しく生成してください。開発用の値を
+  流用しないでください。
+- 判定結果ページには `Cache-Control` を設定していません。前段にリバース
+  プロキシや CDN を置く場合は、キャッシュ設定をご確認ください
+  （「データの取り扱い」の「本アプリでは防ぎきれないこと」を参照）。
 
 ---
 
