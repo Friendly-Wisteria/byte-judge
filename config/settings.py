@@ -88,6 +88,20 @@ DATABASES = {
     }
 }
 
+# アップロードファイルの取り扱い
+# 既定の FILE_UPLOAD_HANDLERS は 2.5MB を超えるリクエストを
+# TemporaryFileUploadHandler で OS の一時ディレクトリに書き出す。
+# 「入力内容をサーバー側に保存しない」という約束をディスク経由で崩さないため、
+# ハンドラをメモリのみに固定する。
+FILE_UPLOAD_HANDLERS = [
+    'django.core.files.uploadhandler.MemoryFileUploadHandler',
+]
+# forms.MAX_IMAGE_SIZE（5MB）超の画像は form 側で拒否するが、その判定は
+# multipart のパース後に行われる。ここを form の上限より大きく取ることで、
+# 拒否対象のファイルもメモリ上で受け切り、正しいエラーメッセージを返せる。
+# （大小関係は apps/judge/tests.py で検証している）
+FILE_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024  # 6MB
+
 # LOGGING関係
 LOGGING = {
     'version': 1,
