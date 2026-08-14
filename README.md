@@ -16,6 +16,7 @@
 - **推奨アクションの提示**：ユーザーが次に取るべき行動をわかりやすい「ですます調」で案内
 - **構造化出力**：Claude の structured outputs（Pydantic スキーマ）で JSON を強制し、パース失敗時は結果を表示せずエラー処理
 
+
 ## 判定の観点（一例）
 
 プロンプトで以下のような危険シグナルを評価します。
@@ -31,10 +32,10 @@
 ## 使用している LLM
 
 - **Anthropic Claude** — `anthropic` SDK 経由
-- モデル名は環境変数 `CLAUDE_MODEL` で切り替え可能（既定：`claude-opus-5`）
+- モデル名は環境変数 `CLAUDE_MODEL` で切り替え可能（既定：`claude-sonnet-5`）
 - 出力は `RiskReportSchema`（Pydantic）で構造化。マルチモーダル入力（画像＋プロンプト）に対応
-- **判定プロンプトは `system`、評価対象の求人は `user` に分離**して送信します。求人文中の文言が LLM への命令として解釈されにくくなります（プロンプトインジェクション対策）
 - 安全機構による拒否（`stop_reason: "refusal"`）や出力打ち切り（`max_tokens`）を検出し、その場合は判定結果を表示せずエラー処理します
+
 
 ## 技術スタック
 
@@ -68,8 +69,10 @@ uv sync
 ```dotenv
 # Django
 SECRET_KEY=<Django のシークレットキー>
-# 本番環境では False にすること（「本番環境にデプロイする場合の必須設定」を参照）
-DEBUG=True
+ALLOWED_HOSTS=127.0.0.1,localhost
+
+# ローカル開発時のみ、次の行を追加してください（本番では絶対に追加しない）
+# DEBUG=True
 
 # Anthropic (Claude)
 ANTHROPIC_API_KEY=<Claude Console で取得した API キー>
@@ -84,9 +87,9 @@ VIEW_TEST_MODE=False
   uv run python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
   ```
 - `ANTHROPIC_API_KEY` は [Claude Console](https://platform.claude.com/) で発行してください。
-- `CLAUDE_MODEL` は `claude-sonnet-5`（コスト重視）や `claude-haiku-4-5`（最安）にも切り替えられます。
+- `CLAUDE_MODEL` は `claude-haiku-4-5`（最安）にも切り替えられます。
   ただし **`claude-fable-5` / `claude-mythos-5` は使用しないでください**（後述）。
-
+- `ALLOWED_HOSTS` は本番環境では実際のドメインに変更してください（例：`ALLOWED_HOSTS=example.com,www.example.com`）。
 ### 3. データベースの初期化と起動
 
 ```bash
@@ -154,8 +157,7 @@ config/               # Django プロジェクト設定
   再表示されるかどうかはブラウザによって異なり、必ず防げるとは限りません。
   なお判定結果は URL に含まれないため、履歴に残るのはページを開いた事実だけです。
   共用のパソコンを使っている場合は、確認が終わったら履歴を消してください。
-- **サーバーを動か
-- している環境そのものは、本アプリの管理外です。** 上に書いたのは
+- **サーバーを動かしている環境そのものは、本アプリの管理外です。** 上に書いたのは
   「本アプリのコードが何を保存しないか」であって、アプリを動かしているサーバーや
   その前段の設定まで保証するものではありません。ご自身で設置する方は、下の
   「セルフホスト・再配布される方へ」も必ずお読みください。
@@ -206,8 +208,7 @@ config/               # Django プロジェクト設定
 ### ユーザーの皆さまへのお願い
 
 - スクリーンショットには、募集者やご自身の個人情報（電話番号・SNS アカウント・
-  DM 画面など）が写り込みがちです。上記の通り、送信内容は外部（Anthropic）に
-  最低30日、フラグが立てば最大2年〜7年残る可能性があります。
+  DM 画面など）が写り込みがちです。上記の通り、送信内容は外部（Anthropic）に最大30日間保持され、フラグが立った場合は入出力が最大2年、分類スコアが最大7年残る可能性があります。
   **アップロード前に、不要な個人情報を塗りつぶすことを強くおすすめします。**
 - 判定に必要なのは「募集の文面」だけです。氏名・住所・電話番号・口座番号・
   顔写真などが写っている部分は、隠してからアップロードしてください。
@@ -216,42 +217,36 @@ config/               # Django プロジェクト設定
 
 ## 本番環境にデプロイする場合の必須設定
 
-**以下はアプリのコード側では対応していません。デプロイする側で必ず設定してください。**
 ローカルで動かすだけなら不要です。
 
-### 1. `DEBUG` を `False` にする
+### 1. `DEBUG` を有効にしない
 
-`.env` のサンプルおよび上記のセットアップ手順は、ローカル開発を前提に
-`DEBUG=True` になっています。**本番環境では必ず `DEBUG=False` にしてください。**
+`config/settings.py` は、環境変数 `DEBUG` が未設定のときは `False` に
+フォールバックします。**本番環境の `.env` には `DEBUG` の行を書かないでください。**
 
 `DEBUG=True` のまま公開すると、サーバー内部でエラーが起きたときに、詳細な
 エラーページがリクエストした相手にそのまま返ります。このページには設定値・
 リクエストヘッダ・Cookie などが含まれます。
 
-- 求人テキストなど POST された内容自体は、`sensitive_post_parameters` /
-  `sensitive_variables` によりマスクされます（`apps/judge/views.py`、
-  `apps/judge/service.py`）。ただしそれ以外の情報は表示されるため、
-  `DEBUG=False` は依然として必須です。
-- `config/settings.py` は、環境変数 `DEBUG` が未設定のときは `False` に
-  フォールバックします。`DEBUG=True` を明示しない限り、本番で有効に
-  なることはありません。
+なお、求人テキストなど POST された内容自体は `sensitive_post_parameters` /
+`sensitive_variables` によりマスクされます（`apps/judge/views.py`、
+`apps/judge/service.py`）。ただしそれ以外の情報は表示されるため、
+`DEBUG` を有効にしないことは依然として必須です。
 
 ### 2. `ALLOWED_HOSTS` を設定する
 
-`config/settings.py` の `ALLOWED_HOSTS` は **空リストのままです。**
-`DEBUG=False` の状態では、Django は空の `ALLOWED_HOSTS` に対してすべての
-リクエストを拒否します（`DisallowedHost`）。**このままではアプリが動きません。**
+環境変数 `ALLOWED_HOSTS` に、公開するドメインをカンマ区切りで設定してください。
 
-環境変数からは読んでいないため、`config/settings.py` を直接編集するか、
-環境変数から読み込む形に変更してください。
-
-```python
-# 直接指定する場合
-ALLOWED_HOSTS = ['example.com', 'www.example.com']
-
-# 環境変数から読み込む場合（django-environ）
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[])
+```dotenv
+ALLOWED_HOSTS=example.com,www.example.com
 ```
+
+未設定のまま `DEBUG=False` で起動すると、Django はすべてのリクエストを
+拒否します（`DisallowedHost`）。
+
+⚠️ **`runserver` は起動時にエラーで止まりますが、gunicorn などの本番用
+サーバーではこのチェックが走りません。**設定漏れに気づくのがデプロイ後の
+最初のリクエストになるため、起動前に必ず確認してください。
 
 ### 3. その他
 
