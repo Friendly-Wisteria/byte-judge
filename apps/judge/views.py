@@ -14,6 +14,31 @@ from .service import job_offer_risk_assess
 logger = logging.getLogger(__name__)
 
 
+def _image_discarded_by_memory_limit(request) -> bool:
+    """アップロード画像が、フォームに届く前に捨てられた状態かどうか。
+
+    FILE_UPLOAD_HANDLERS をメモリのみに固定しているため、リクエスト全体が
+    FILE_UPLOAD_MAX_MEMORY_SIZE を超えると MemoryFileUploadHandler は自身を
+    無効化する。後続のハンドラが居ないので、ファイル部分は request.FILES に
+    載らないまま読み捨てられ、フォームには空の画像フィールドが渡る。
+
+    ファイル以外のフィールドは DATA_UPLOAD_MAX_MEMORY_SIZE（既定 2.5MB）で
+    別に制限され、超えればここに来る前に 413 になる。したがって multipart の
+    リクエストが FILE_UPLOAD_MAX_MEMORY_SIZE を超えていて FILES が空なら、
+    超過分はファイル部分＝捨てられた画像とみなせる。
+    （両上限の大小関係は apps/judge/tests.py で検証している）
+    """
+    if not request.content_type.startswith("multipart/form-data"):
+        return False
+    if request.FILES:
+        return False
+    try:
+        content_length = int(request.META.get("CONTENT_LENGTH") or 0)
+    except ValueError:
+        return False
+    return content_length > settings.FILE_UPLOAD_MAX_MEMORY_SIZE
+
+
 # エラー報告（DEBUG=True 時の 500 ページ、ADMINS 設定時の管理者メール）に
 # POST の求人テキストが載らないようにする。
 # あわせて、判定結果のページがブラウザやプロキシのキャッシュに保存されないよう
@@ -23,6 +48,12 @@ logger = logging.getLogger(__name__)
 class IndexView(FormView):
     template_name = "judge/index.html"
     form_class = JobOfferRiskAssessForm
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        if self.request.method in ("POST", "PUT"):
+            kwargs["image_discarded"] = _image_discarded_by_memory_limit(self.request)
+        return kwargs
 
     def get(self, request, *args, **kwargs):
         # view test modeの時の警告表示

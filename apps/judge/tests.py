@@ -377,3 +377,58 @@ class ResultPageIsNotCachedTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("no-store", response.headers.get("Cache-Control", ""))
+
+
+@override_settings(VIEW_TEST_MODE=True)
+class OversizedRequestIsReportedTests(TestCase):
+    """リクエスト全体のサイズ超過で画像が捨てられた場合の案内の検証。
+
+    メモリ専用ハンドラ構成では、上限超過の画像は request.FILES に載らず
+    黙って捨てられる。フォームからは「画像が選ばれていない」状態と区別が
+    つかないため、実態と違うエラー（あるいは、テキストだけの判定）に
+    なっていないかを見る。
+    """
+
+    def test_data_limit_stays_within_the_file_memory_limit(self):
+        # 検知の前提：ファイル以外のフィールドはこちらの上限で別に制限される。
+        # 逆転すると「超過分＝画像」と言えなくなり、検知が誤判定になる。
+        self.assertLessEqual(
+            settings.DATA_UPLOAD_MAX_MEMORY_SIZE, settings.FILE_UPLOAD_MAX_MEMORY_SIZE
+        )
+
+    def test_image_with_long_text_reports_the_combined_size(self):
+        """画像＋長文で上限を超えた場合、合計サイズが原因だと分かること。"""
+        png = png_at_least(4 * 1024 * 1024)
+        # 画像と合わせて FILE_UPLOAD_MAX_MEMORY_SIZE を超える長さ（"あ" は 3 バイト）
+        text = "あ" * ((settings.FILE_UPLOAD_MAX_MEMORY_SIZE - len(png)) // 3 + 1000)
+        self.assertLess(len(png), forms.MAX_IMAGE_SIZE)  # 画像単体では上限内
+        # テキスト側は上限内（＝413 ではなく、画像破棄の経路を通る）
+        self.assertLess(len(text.encode()), settings.DATA_UPLOAD_MAX_MEMORY_SIZE)
+
+        response = self.client.post(
+            "/", {"mode": "image", "text": text, "image": upload(png)}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, forms.OVERSIZED_REQUEST_ERROR)
+        # 画像が消えたまま、テキストだけで判定して結果を出していないこと
+        self.assertIsNone(response.context.get("result"))
+
+    def test_oversized_image_alone_reports_the_image_size(self):
+        """画像だけで上限を超えた場合、「入力が無い」ではなく画像サイズを案内すること。"""
+        png = png_at_least(settings.FILE_UPLOAD_MAX_MEMORY_SIZE + 1)
+
+        response = self.client.post(
+            "/", {"mode": "image", "text": "", "image": upload(png)}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, forms.OVERSIZED_IMAGE_ERROR)
+        self.assertNotContains(response, "どちらかを入力してください")
+
+    def test_empty_submission_still_reports_the_missing_input(self):
+        """本当に何も入力されていない場合は、従来どおりの案内のままであること。"""
+        response = self.client.post("/", {"mode": "text", "text": ""})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "どちらかを入力してください")
