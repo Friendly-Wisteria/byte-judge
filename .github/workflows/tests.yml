@@ -1,0 +1,44 @@
+name: Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+# 最小権限の原則（このワークフローは読み取りのみで十分）
+permissions:
+  contents: read
+
+# 同一ブランチで新しい実行が始まったら、進行中の古い実行はキャンセル
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  django-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # CI には .env を置かないため、settings が必須としている値だけをここで与える。
+      # テスト専用のダミー値であり、本番の値とは無関係。
+      # ANTHROPIC_API_KEY は不要（テストは Claude API を呼ばず、クライアントを
+      # モックする）。
+      SECRET_KEY: dummy-secret-key-for-ci-only
+      DEBUG: "False"
+      VIEW_TEST_MODE: "False"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      # 「入力内容をサーバー側に残さない」ことの回帰テスト（apps/judge/tests.py）を含む
+      - name: Run Django tests
+        run: uv run python manage.py test --verbosity 2
