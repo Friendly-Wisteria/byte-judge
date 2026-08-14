@@ -42,9 +42,9 @@ class Signal(BaseModel):
 class RiskReportSchema(BaseModel):
     score: int = Field(ge=0, le=100, description="危険度 0〜100")
     level: Level = Field(description="総合判定ラベル")
-    summary: str = Field(description="総合判断を1〜2文で")
+    summary: str = Field(min_length=1, description="総合判断を1〜2文で")
     signals: list[Signal] = Field(default_factory=list, description="検出シグナル")
-    advice: str = Field(description="推奨アクションを1〜2文で")
+    advice: str = Field(min_length=1, description="推奨アクションを1〜2文で")
 
     @computed_field
     @property
