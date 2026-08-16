@@ -1,5 +1,5 @@
 <!doctype html>
-<!--
+{% comment %}
   闇バイト 危険度チェック  Bootstrap(Vapor)版 フロントのみ
   スクショ / テキスト の2経路に対応。ドラッグ&ドロップ / 画像ペースト対応。判定処理は含みません。
 
@@ -16,7 +16,7 @@
     mode = request.POST.get("mode")           # "image" or "text"
     image = request.FILES.get("image")        # スクショ送信時
     text  = request.POST.get("text", "")      # テキスト送信時
--->
+{% endcomment %}
 <html lang="ja">
     <head>
         <meta charset="UTF-8" />
@@ -100,22 +100,24 @@
                     {% endfor %}
                     {% endif %}
                     <div class="eyebrow text-info mb-1">
-                        スクショ or テキストを送るだけ ・ 30秒で、闇バイトの可能性をチェック
+                        募集文を貼り付けるだけ ・ 30秒で、闇バイトの可能性をチェック
                     </div>
                     <h1 class="fw-bold mb-2">バイトジャッジ</h1>
                     <p class="text-secondary mb-4">
-                        気になる求人のスクショか、募集文のテキストを送るだけ。「簡単・高額・即日」の裏に隠れた“ヤバいサイン”を、AIがチェックします。
+                        気になる求人の募集文を貼り付けるだけ。「簡単・高額・即日」の裏に隠れた“ヤバいサイン”を、AIがチェックします。
                     </p>
                     <ul class="nav nav-tabs" role="tablist">
+                      {% comment %} 画像投稿UIは一時停止中
                       <li class="nav-item" role="presentation">
                         <a class="nav-link active" data-bs-toggle="tab" href="#home" aria-selected="true" role="tab">スクショで送る</a>
                       </li>
+                      {% endcomment %}
                       <li class="nav-item" role="presentation">
-                        <a class="nav-link" data-bs-toggle="tab" href="#profile" aria-selected="false" role="tab" tabindex="-1">テキストで送る</a>
+                        <a class="nav-link active" data-bs-toggle="tab" href="#profile" aria-selected="true" role="tab">テキストで送る</a>
                       </li>
                     </ul>
                     <div id="myTabContent" class="tab-content">
-                      <!-- ============ スクショ タブ ============ -->
+                      {% comment %} ============ スクショ タブ（画像投稿UIは一時停止中） ============
                       <div class="tab-pane fade active show" id="home" role="tabpanel">
                           <form
                               id="form-image"
@@ -150,9 +152,10 @@
                               </div>
                           </form>
                       </div>
+                      {% endcomment %}
 
                       <!-- ============ テキスト タブ ============ -->
-                      <div class="tab-pane fade" id="profile" role="tabpanel">
+                      <div class="tab-pane fade active show" id="profile" role="tabpanel">
                           <form
                               id="form-text"
                               method="post"
@@ -261,7 +264,7 @@
 
                     <!-- 注意書き -->
                     <p class="text-secondary small border-top pt-3 mt-4 mb-0">
-                        これはAIによる目安です。まちがえることもあるので、少しでも不安なら家族や警察相談専用ダイヤル「#9110」に相談してください。送った画像やテキストと判定結果は、このサイトには保存されません。ただし判定のため外部のAI（Anthropic）に送信され、そちらには一定期間残ります。
+                        これはAIによる目安です。まちがえることもあるので、少しでも不安なら家族や警察相談専用ダイヤル「#9110」に相談してください。送ったテキストと判定結果は、このサイトには保存されません。ただし判定のため外部のAI（Anthropic）に送信され、そちらには一定期間残ります。
                     </p>
                 </div>
             </div>
@@ -272,7 +275,7 @@
                 integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
                 crossorigin="anonymous"></script>
 
-        <!-- スクショ(クリック/D&D/ペースト) と テキスト の両フォームに対応（判定処理は含みません） -->
+        {% comment %} スクショ(クリック/D&D/ペースト) と テキスト の両フォームに対応（判定処理は含みません） {% endcomment %}
         <script>
             (function () {
               var overlay = document.getElementById('loading-overlay');
@@ -294,7 +297,7 @@
                 }, 2500);
               }
 
-              // ===== スクショ タブ =====
+              {% comment %} ===== スクショ タブ（画像投稿UIは一時停止中） =====
               var input     = document.getElementById('file');
               var dropzone  = document.getElementById('dropzone');
               var idle      = document.getElementById('dz-idle');
@@ -382,6 +385,7 @@
                   '総合的にチェック中…'
                 ]);
               });
+              {% endcomment %}
 
               // ===== テキスト タブ =====
               var textForm  = document.getElementById('form-text');
