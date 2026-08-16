@@ -480,6 +480,32 @@ class MissingInfoIsSurfacedTests(TestCase):
         self.assertContains(response, "事業者情報")
         self.assertContains(response, "応募・連絡方法")
 
+    def test_safe_result_is_not_declared_safe(self):
+        """兆候が無い場合も「安全」と言い切らないこと（偽陰性は取り返しがつかない）。"""
+        report = RiskReportSchema.model_validate(
+            {
+                "score": 12,
+                "level": "安全",
+                "summary": "s",
+                "signals": [],
+                "advice": "a",
+                "has_enough_info": True,
+            }
+        )
+
+        self.assertEqual(report.level_label, "危険な兆候なし")
+
+    @override_settings(VIEW_TEST_MODE=True)
+    def test_safe_result_page_shows_no_safe_verdict(self):
+        """結果ページに判定として「安全」の文字を出さないこと。"""
+        with mock.patch.object(service, "FIXTURES", {"safe": FIXTURES["safe"]}):
+            response = self.client.post("/", {"mode": "text", "text": JOB_TEXT})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "危険な兆候なし")
+        # fixture の文言も含め、「安全です」と読める断定が画面に出ていないこと
+        self.assertNotContains(response, "安全です")
+
     def test_insufficient_result_is_not_labeled_as_a_verdict(self):
         """情報不足なら、判定名（安全など）も判定色も表示に使わないこと。"""
         report = RiskReportSchema.model_validate(
