@@ -36,6 +36,14 @@ _SEVERITY_COLOR = {
     Severity.MID: "warning",
     Severity.LOW: "secondary",
 }
+# 画面に出す判定ラベル。「安全」と言い切らず、確認できた範囲の結果として示す
+# （偽陰性だったとき、断定は取り返しがつかないため）
+_LEVEL_LABEL = {
+    Level.DANGER: "危険",
+    Level.CAUTION: "要注意",
+    Level.SAFE: "危険な兆候なし",
+}
+
 # 情報不足のときの表示（判定名・判定色を使わない）
 INSUFFICIENT_LABEL = "情報不足"
 INSUFFICIENT_COLOR = "secondary"
@@ -88,7 +96,9 @@ class RiskReportSchema(BaseModel):
     @property
     def level_label(self) -> str:
         """画面に出す判定ラベル。情報不足のときは判定名を出さない。"""
-        return self.level.value if self.has_enough_info else INSUFFICIENT_LABEL
+        if not self.has_enough_info:
+            return INSUFFICIENT_LABEL
+        return _LEVEL_LABEL[self.level]
 
     @model_validator(mode="after")
     def _reconcile_missing_info(self):

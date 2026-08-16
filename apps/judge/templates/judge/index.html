@@ -7,7 +7,7 @@
     result ... 判定結果オブジェクト。無い時（初回表示）はアップロードUIだけ表示。
       result.score       0〜100の整数（危険度）
       result.level       判定ラベル: 危険 / 要注意 / 安全
-      result.level_label 画面に出すラベル。情報不足なら判定名ではなく「情報不足」
+      result.level_label 画面に出すラベル。安全は「危険な兆候なし」、情報不足なら「情報不足」
       result.bs_color    Bootstrap配色: danger / warning / success。情報不足なら中立色 secondary
       result.summary     総合判断の文
       result.signals     シグナルのリスト（各要素は name / severity / bs_color / detail）
