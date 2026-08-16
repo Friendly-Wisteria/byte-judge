@@ -13,6 +13,8 @@ FIXTURES = {
              "detail": "「荷物を受け取るだけの簡単な作業」とだけ書かれ具体性がありません。"},
         ],
         "advice": "応募・連絡は行わず、不審な求人として通報を検討してください。",
+        "has_enough_info": True,
+        "missing_info": [],
     },
     "caution": {
         "score": 52,
@@ -25,6 +27,8 @@ FIXTURES = {
              "detail": "会社の所在地・電話番号の記載が見当たりません。"},
         ],
         "advice": "事業者情報を確認し、不明点は正規の窓口で問い合わせてください。",
+        "has_enough_info": True,
+        "missing_info": [],
     },
     "safe": {
         "score": 12,
@@ -32,5 +36,16 @@ FIXTURES = {
         "summary": "業務内容・事業者情報が明確で、闇バイトの兆候は確認できませんでした。",
         "signals": [],
         "advice": "特段の危険は見られません。念のため募集元の正当性はご自身でもご確認ください。",
+        "has_enough_info": True,
+        "missing_info": [],
+    },
+    "insufficient": {
+        "score": 28,
+        "level": "要注意",
+        "summary": "作業内容と報酬しか書かれておらず、この文章だけでは判断できない部分が残ります。読み取れた範囲では、はっきりした危険なサインは確認できませんでした。",
+        "signals": [],
+        "advice": "募集元の会社名や連絡方法が書かれている部分も貼り付けて、もう一度お試しください。",
+        "has_enough_info": False,
+        "missing_info": ["事業者情報", "勤務地・勤務時間", "応募・連絡方法"],
     },
 }

@@ -116,7 +116,7 @@ apps/judge/
 ├── views.py          # 入力フォームと結果表示（FormView）
 ├── forms.py          # 画像サイズ/解像度の検証（decompression bomb 対策含む）
 ├── service.py        # Claude API 呼び出し・プロンプト整形・結果パース
-├── schema.py         # RiskReportSchema（score / level / signals / advice）
+├── schema.py         # RiskReportSchema（score / level / signals / advice / has_enough_info / missing_info）
 ├── fixtures.py       # VIEW_TEST_MODE 用の固定サンプル
 ├── templates/judge/
 │   ├── index.html

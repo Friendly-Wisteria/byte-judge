@@ -6,11 +6,14 @@
   view から渡す context の想定キー:
     result ... 判定結果オブジェクト。無い時（初回表示）はアップロードUIだけ表示。
       result.score       0〜100の整数（危険度）
-      result.level       表示ラベル: 危険 / 要注意 / 安全
-      result.bs_color    Bootstrap配色: danger / warning / success
+      result.level       判定ラベル: 危険 / 要注意 / 安全
+      result.level_label 画面に出すラベル。情報不足なら判定名ではなく「情報不足」
+      result.bs_color    Bootstrap配色: danger / warning / success。情報不足なら中立色 secondary
       result.summary     総合判断の文
       result.signals     シグナルのリスト（各要素は name / severity / bs_color / detail）
       result.advice      推奨アクションの文
+      result.has_enough_info    判定に足る情報が入力に含まれていたか（False なら暫定表示＋貼り足しの案内）
+      result.missing_info_hints 不足項目のリスト（各要素は label / hint）
 
   view 側での受け取り例:
     mode = request.POST.get("mode")           # "image" or "text"
@@ -174,7 +177,7 @@
                                       placeholder="例）日給5万円以上／即日現金手渡し／簡単な受け取り作業のみ／Telegramで連絡ください…"
                                   ></textarea>
                                   <div class="small text-secondary mb-3">
-                                      募集ページや DM の文章をそのまま貼り付けてOKです。
+                                      募集ページや DM の文章をそのまま貼り付けてOKです。会社名・仕事内容・連絡方法など、書かれている部分はできるだけまるごと貼り付けてください。
                                   </div>
                                   <div id="text-error" class="text-danger small mb-2 d-none">求人の募集文を入力してください。</div>
                                   <button type="submit" class="btn btn-primary w-100">
@@ -195,13 +198,13 @@
                                 <span
                                     class="badge text-bg-{{ result.bs_color }} fs-5 px-3 py-2"
                                 >
-                                    {{ result.level }}
+                                    {{ result.level_label }}
                                 </span>
                                 <div class="flex-grow-1">
                                     <div
                                         class="d-flex justify-content-between small text-secondary mb-1"
                                     >
-                                        <span>危険度</span>
+                                        <span>危険度{% if not result.has_enough_info %}（暫定）{% endif %}</span>
                                         <span>{{ result.score }}/100</span>
                                     </div>
                                     <div
@@ -222,6 +225,26 @@
                             </div>
 
                             <p class="mb-0">{{ result.summary }}</p>
+
+                            <!-- 判定材料が足りない場合の案内 -->
+                            {% if not result.has_enough_info %}
+                            <div class="alert alert-info mt-3 mb-0" role="alert">
+                                <div class="fw-bold mb-1">この文章だけでは、まだ判断しきれません</div>
+                                <div class="small">
+                                    次の内容が見当たりませんでした。募集ページやDMに書かれている場合は、その部分も貼り付けて、もう一度チェックしてください。判定の精度が上がります。
+                                </div>
+                                {% if result.missing_info_hints %}
+                                <ul class="small mb-0 mt-2">
+                                    {% for item in result.missing_info_hints %}
+                                    <li>
+                                        <span class="fw-semibold">{{ item.label }}</span>
+                                        … {{ item.hint }}
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                                {% endif %}
+                            </div>
+                            {% endif %}
 
                             <!-- 検出されたシグナル -->
                             {% if result.signals %}

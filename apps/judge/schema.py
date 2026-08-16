@@ -1,6 +1,6 @@
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, model_validator
 
 
 class Level(StrEnum):
@@ -15,6 +15,16 @@ class Severity(StrEnum):
     LOW = "低"
 
 
+class MissingInfo(StrEnum):
+    """判定に必要だが、貼り付けられたテキストに見当たらなかった項目。"""
+
+    OPERATOR = "事業者情報"
+    JOB_DETAIL = "仕事内容"
+    PAY = "報酬・給与条件"
+    WORKPLACE = "勤務地・勤務時間"
+    CONTACT = "応募・連絡方法"
+
+
 # 表示ラベル → Bootstrap 配色クラスの対応表（表示専用）
 _LEVEL_COLOR = {
     Level.DANGER: "danger",
@@ -25,6 +35,18 @@ _SEVERITY_COLOR = {
     Severity.HIGH: "danger",
     Severity.MID: "warning",
     Severity.LOW: "secondary",
+}
+# 情報不足のときの表示（判定名・判定色を使わない）
+INSUFFICIENT_LABEL = "情報不足"
+INSUFFICIENT_COLOR = "secondary"
+
+# 不足項目 → 「何を貼り足せばよいか」の案内（表示専用）
+_MISSING_HINT = {
+    MissingInfo.OPERATOR: "会社名・所在地・電話番号・許可番号など、募集元がわかる部分",
+    MissingInfo.JOB_DETAIL: "実際に何をする仕事なのかが書かれている部分",
+    MissingInfo.PAY: "時給・日給・支払い方法が書かれている部分",
+    MissingInfo.WORKPLACE: "勤務地・勤務時間・雇用形態が書かれている部分",
+    MissingInfo.CONTACT: "応募方法や連絡先（アプリ名・URLなど）が書かれている部分",
 }
 
 
@@ -45,8 +67,46 @@ class RiskReportSchema(BaseModel):
     summary: str = Field(min_length=1, description="総合判断を1〜2文で")
     signals: list[Signal] = Field(default_factory=list, description="検出シグナル")
     advice: str = Field(min_length=1, description="推奨アクションを1〜2文で")
+    has_enough_info: bool = Field(
+        description="闇バイトかどうかを判断できるだけの情報が、与えられたテキストに含まれていたか"
+    )
+    missing_info: list[MissingInfo] = Field(
+        default_factory=list,
+        description="判定に必要だが、テキストに見当たらなかった項目",
+    )
 
     @computed_field
     @property
     def bs_color(self) -> str:
+        # 情報が足りないまま「安全（緑）」を出すと、判断が付いたように読めてしまう。
+        # 判定の3色は使わず、中立の配色にする。
+        if not self.has_enough_info:
+            return INSUFFICIENT_COLOR
         return _LEVEL_COLOR[self.level]
+
+    @computed_field
+    @property
+    def level_label(self) -> str:
+        """画面に出す判定ラベル。情報不足のときは判定名を出さない。"""
+        return self.level.value if self.has_enough_info else INSUFFICIENT_LABEL
+
+    @model_validator(mode="after")
+    def _reconcile_missing_info(self):
+        """不足項目と十分フラグの矛盾をならす。
+
+        不足項目を挙げながら has_enough_info=true を返してくることがある。
+        画面では「暫定表示」と「不足の案内」が同じフラグで動くため、
+        矛盾したまま出さず、安全側（不足あり）に寄せる。重複も畳む。
+        """
+        self.missing_info = list(dict.fromkeys(self.missing_info))
+        if self.missing_info:
+            self.has_enough_info = False
+        return self
+
+    @property
+    def missing_info_hints(self) -> list[dict[str, str]]:
+        """不足項目を {ラベル, 補足} にして返す（表示専用）。"""
+        return [
+            {"label": item.value, "hint": _MISSING_HINT[item]}
+            for item in self.missing_info
+        ]
