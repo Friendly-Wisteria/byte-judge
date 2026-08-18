@@ -576,7 +576,7 @@ class ApiUnavailableIsGuidedToConsultationTests(TestCase):
 
     月額の利用上限・レート制限・API 障害・安全機構による拒否では、時間をおいても
     判定できるとは限らない。「失敗したので再試行を」で終わらせると判断がつかない
-    まま放置されるため、相談先（#9110）まで案内できているかを見る。
+    まま放置されるため、相談先（#9110・188）まで案内できているかを見る。
     """
 
     def _assess_with_api_failure(self, error):
@@ -636,6 +636,7 @@ class ApiUnavailableIsGuidedToConsultationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context.get("result"))
         self.assertIn("#9110", views.LLM_UNAVAILABLE_ERROR)
+        self.assertIn("188", views.LLM_UNAVAILABLE_ERROR)
         self.assertContains(response, views.LLM_UNAVAILABLE_ERROR)
 
     def test_other_failures_keep_the_retry_message(self):
@@ -669,6 +670,7 @@ class DailyQuotaTests(TestCase):
         # 上限に達したことと、相談先が案内される
         self.assertIsNone(response.context.get("result"))
         self.assertIn("#9110", views.daily_quota_error())
+        self.assertIn("188", views.daily_quota_error())
         self.assertContains(response, views.daily_quota_error())
 
     @override_settings(VIEW_TEST_MODE=True)
@@ -747,6 +749,7 @@ class SiteDailyLimitTests(TestCase):
         self.assertIsNone(response.context.get("result"))
         self.assertContains(response, views.SITE_QUOTA_ERROR)
         self.assertIn("#9110", views.SITE_QUOTA_ERROR)
+        self.assertIn("188", views.SITE_QUOTA_ERROR)
         # 枠を取れなかった判定は API に届かない（＝費用が出ない）
         assess.assert_not_called()
 
