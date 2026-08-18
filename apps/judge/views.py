@@ -9,9 +9,17 @@ from django.views.generic import FormView
 from PIL import Image
 
 from .forms import JobOfferRiskAssessForm
-from .service import job_offer_risk_assess
+from .service import AssessmentError, job_offer_risk_assess
 
 logger = logging.getLogger(__name__)
+
+# LLM 側の事情（月額の利用上限・レート制限・API 障害・安全機構による拒否）で
+# 判定を受けられないときの案内。時間をおいても回復するとは限らないため、
+# 再試行の案内だけで終わらせず、相談先（ページ下部の注意書き）まで示す。
+LLM_UNAVAILABLE_ERROR = (
+    "現在、AIによる判定を利用できません。時間をおいて、もう一度お試しください。"
+    "不安なときは、下記の警察相談専用ダイヤル「#9110」にご相談ください。"
+)
 
 
 def _image_discarded_by_memory_limit(request) -> bool:
@@ -79,14 +87,19 @@ class IndexView(FormView):
         # 型判別は job_offer_risk_assess 内の isinstance に任せて、そのまま渡す
         result = job_offer_risk_assess(job_offer_data)
 
-        # 判定に失敗した場合（型エラー / API エラー / パース失敗など）は
-        # サービス層が None を返す。結果は表示せず、エラーメッセージを提示する。
-        if result is None:
-            logger.error("Risk assessment failed: service returned None")
-            messages.error(
-                self.request,
-                "判定に失敗しました。時間をおいて、もう一度お試しください。",
-            )
+        # 判定できなかった場合、サービス層は結果の代わりに理由を返す。
+        # どちらも結果は表示せず、理由に応じた案内を出す。
+        if result is None or isinstance(result, AssessmentError):
+            if result is AssessmentError.UNAVAILABLE:
+                # LLM に判定させること自体ができていない状態。
+                logger.error("Risk assessment unavailable: no judgment from the LLM")
+                messages.error(self.request, LLM_UNAVAILABLE_ERROR)
+            else:
+                logger.error("Risk assessment failed: service returned %r", result)
+                messages.error(
+                    self.request,
+                    "判定に失敗しました。時間をおいて、もう一度お試しください。",
+                )
             return self.render_to_response(self.get_context_data(form=form))
 
         # view test modeの時の警告表示

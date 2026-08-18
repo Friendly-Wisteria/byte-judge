@@ -98,9 +98,11 @@ class FakeRequest:
 
 
 class FakeResponse:
-    status_code = 400
     headers = {"request-id": "req_test"}
     request = FakeRequest()
+
+    def __init__(self, status_code=400):
+        self.status_code = status_code
 
 
 def api_status_error():
@@ -108,6 +110,24 @@ def api_status_error():
         "Invalid request",
         response=FakeResponse(),
         body={"error": {"type": "invalid_request_error", "message": "Invalid request"}},
+    )
+
+
+def rate_limit_error():
+    """SDK の自動リトライ後もなおレート制限だった状況を再現する。"""
+    return anthropic.RateLimitError(
+        "Rate limited",
+        response=FakeResponse(429),
+        body={"error": {"type": "rate_limit_error", "message": "Rate limited"}},
+    )
+
+
+def billing_error():
+    """月額の利用上限など、課金側で止められた状況を再現する。"""
+    return anthropic.APIStatusError(
+        "Billing error",
+        response=FakeResponse(402),
+        body={"error": {"type": "billing_error", "message": "spend limit reached"}},
     )
 
 
@@ -222,9 +242,10 @@ class LogsNeverContainInputTests(TestCase):
             client_class.return_value.messages.parse.side_effect = error
             with capture_logs() as logs:
                 response = self.client.post("/", {"mode": "text", "text": JOB_TEXT})
-        # 判定は失敗し、ユーザーには汎用メッセージが出る
+        # 判定は表示されず、ユーザーにはエラーが出る（文言は別テストで検証）
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "判定に失敗しました")
+        self.assertContains(response, "alert-danger")
+        self.assertIsNone(response.context.get("result"))
         return logs.text
 
     def test_api_status_error_does_not_log_the_request_body(self):
@@ -545,3 +566,80 @@ class MissingInfoIsSurfacedTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "この文章だけでは、まだ判断しきれません")
+
+
+@override_settings(VIEW_TEST_MODE=False)
+class ApiUnavailableIsGuidedToConsultationTests(TestCase):
+    """LLM の判定を受けられないときの案内の検証。
+
+    月額の利用上限・レート制限・API 障害・安全機構による拒否では、時間をおいても
+    判定できるとは限らない。「失敗したので再試行を」で終わらせると判断がつかない
+    まま放置されるため、相談先（#9110）まで案内できているかを見る。
+    """
+
+    def _assess_with_api_failure(self, error):
+        with mock.patch.object(service.anthropic, "Anthropic") as client_class:
+            client_class.return_value.messages.parse.side_effect = error
+            return service.job_offer_risk_assess(JOB_TEXT)
+
+    def test_rate_limit_is_reported_as_unavailable(self):
+        self.assertIs(
+            self._assess_with_api_failure(rate_limit_error()),
+            service.AssessmentError.UNAVAILABLE,
+        )
+
+    def test_spend_limit_is_reported_as_unavailable(self):
+        """月額の利用上限で止められた場合も同じ扱いになること。"""
+        self.assertIs(
+            self._assess_with_api_failure(billing_error()),
+            service.AssessmentError.UNAVAILABLE,
+        )
+
+    def test_api_outage_is_reported_as_unavailable(self):
+        for error in (
+            api_status_error(),
+            anthropic.APIConnectionError(request=FakeRequest()),
+        ):
+            with self.subTest(error=type(error).__name__):
+                self.assertIs(
+                    self._assess_with_api_failure(error),
+                    service.AssessmentError.UNAVAILABLE,
+                )
+
+    def test_refusal_is_reported_as_unavailable(self):
+        """安全機構が発火した場合（HTTP は 200）も判定は得られないこと。"""
+        with mock.patch.object(service.anthropic, "Anthropic") as client_class:
+            client_class.return_value.messages.parse.return_value = mock.Mock(
+                stop_reason="refusal", stop_details=mock.Mock(category="cyber")
+            )
+            result = service.job_offer_risk_assess(JOB_TEXT)
+
+        self.assertIs(result, service.AssessmentError.UNAVAILABLE)
+
+    def test_schema_failure_is_not_reported_as_unavailable(self):
+        """応答自体は得られている失敗は、従来どおり再試行の案内に倒すこと。"""
+        self.assertIs(
+            self._assess_with_api_failure(schema_validation_error()),
+            service.AssessmentError.FAILED,
+        )
+
+    def test_page_tells_the_user_it_is_unavailable_and_where_to_ask(self):
+        with mock.patch.object(
+            views,
+            "job_offer_risk_assess",
+            return_value=service.AssessmentError.UNAVAILABLE,
+        ):
+            response = self.client.post("/", {"mode": "text", "text": JOB_TEXT})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context.get("result"))
+        self.assertIn("#9110", views.LLM_UNAVAILABLE_ERROR)
+        self.assertContains(response, views.LLM_UNAVAILABLE_ERROR)
+
+    def test_other_failures_keep_the_retry_message(self):
+        with mock.patch.object(
+            views, "job_offer_risk_assess", return_value=service.AssessmentError.FAILED
+        ):
+            response = self.client.post("/", {"mode": "text", "text": JOB_TEXT})
+
+        self.assertContains(response, "判定に失敗しました")
