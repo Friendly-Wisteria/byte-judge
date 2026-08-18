@@ -24,11 +24,16 @@ LLM_UNAVAILABLE_ERROR = (
 
 # 1日の上限に達したときの案内。判定を断る場面なので、再開時刻だけでなく
 # 相談先も示す（危険な求人を前にした人を、案内なしで締め出さない）。
-DAILY_QUOTA_ERROR = (
-    f"本日の判定は上限（1日{quota.DAILY_LIMIT}件）に達しました。"
-    "日付が変わる（0時）と、また使えるようになります。"
-    "不安なときは、下記の警察相談専用ダイヤル「#9110」にご相談ください。"
-)
+def daily_quota_error() -> str:
+    """個人の上限に達したときの案内。
+
+    件数は設定から取るため、読み込み時ではなく呼ばれた時に組み立てる。
+    """
+    return (
+        f"本日の判定は上限（1日{quota.person_limit()}件）に達しました。"
+        "日付が変わる（0時）と、また使えるようになります。"
+        "不安なときは、下記の警察相談専用ダイヤル「#9110」にご相談ください。"
+    )
 
 # サイト全体の枠を使い切ったときの案内。個人の上限と混同されないよう、
 # 「自分の使いすぎではない」ことが分かる書き方にする。
@@ -96,7 +101,7 @@ class IndexView(FormView):
         if quota.is_exhausted(self.request):
             # 入力内容は残さないため、件数以外は出さない
             logger.info("Daily quota reached")
-            messages.error(self.request, DAILY_QUOTA_ERROR)
+            messages.error(self.request, daily_quota_error())
             return self.render_to_response(self.get_context_data(form=form))
 
         # 全体の枠を確保する。取れなければ API は叩かない。個人の枠と違い、
