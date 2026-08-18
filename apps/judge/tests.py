@@ -9,6 +9,7 @@ import logging
 import math
 import os
 import tempfile
+from datetime import datetime
 from unittest import mock
 
 import anthropic
@@ -19,7 +20,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from PIL import Image
 
-from . import forms, service, views
+from . import forms, quota, service, views
 from .fixtures import FIXTURES
 from .schema import RiskReportSchema
 
@@ -643,3 +644,70 @@ class ApiUnavailableIsGuidedToConsultationTests(TestCase):
             response = self.client.post("/", {"mode": "text", "text": JOB_TEXT})
 
         self.assertContains(response, "判定に失敗しました")
+
+
+class DailyQuotaTests(TestCase):
+    """1人あたり1日 4 件の上限の検証。
+
+    サーバー側に何も持たない方針のため、カウントは署名付き Cookie だけで
+    行っている。上限が効くことに加えて、日付で回復すること・判定を受け取れて
+    いないときに枠を減らさないこと・Cookie に入力内容が乗らないことを見る。
+    """
+
+    def _judge(self):
+        return self.client.post("/", {"mode": "text", "text": JOB_TEXT})
+
+    @override_settings(VIEW_TEST_MODE=True)
+    def test_requests_up_to_the_limit_pass_and_the_next_one_is_refused(self):
+        for i in range(quota.DAILY_LIMIT):
+            with self.subTest(nth=i + 1):
+                self.assertContains(self._judge(), "危険度")
+
+        response = self._judge()
+
+        # 上限に達したことと、相談先が案内される
+        self.assertIsNone(response.context.get("result"))
+        self.assertIn("#9110", views.DAILY_QUOTA_ERROR)
+        self.assertContains(response, views.DAILY_QUOTA_ERROR)
+
+    @override_settings(VIEW_TEST_MODE=True)
+    def test_quota_recovers_at_the_jst_date_boundary(self):
+        """日本時間の 0 時をまたぐと、また判定できること。"""
+        before = datetime(2026, 8, 18, 23, 59, tzinfo=quota.JST)
+        after = datetime(2026, 8, 19, 0, 1, tzinfo=quota.JST)
+
+        with mock.patch.object(quota, "_now_jst", return_value=before):
+            for _ in range(quota.DAILY_LIMIT):
+                self._judge()
+            self.assertContains(self._judge(), views.DAILY_QUOTA_ERROR)
+
+        with mock.patch.object(quota, "_now_jst", return_value=after):
+            self.assertContains(self._judge(), "危険度")
+
+    @override_settings(VIEW_TEST_MODE=False)
+    def test_unavailable_judgment_does_not_consume_the_quota(self):
+        """API 側の事情で判定を受け取れなかった分は、枠を減らさないこと。"""
+        with mock.patch.object(
+            views,
+            "job_offer_risk_assess",
+            return_value=service.AssessmentError.UNAVAILABLE,
+        ):
+            for _ in range(quota.DAILY_LIMIT + 1):
+                self.assertContains(self._judge(), views.LLM_UNAVAILABLE_ERROR)
+
+        # 一度も判定を受け取っていないので、枠は満額残っている
+        with override_settings(VIEW_TEST_MODE=True):
+            self.assertContains(self._judge(), "危険度")
+
+    @override_settings(VIEW_TEST_MODE=True)
+    def test_counting_leaves_nothing_but_a_hardened_cookie(self):
+        """カウントのために、入力内容やサーバー側の行が増えていないこと。"""
+        from django.contrib.sessions.models import Session
+
+        response = self._judge()
+
+        cookie = response.cookies[quota.COOKIE_NAME]
+        self.assertNotIn(MARKER, cookie.value)
+        self.assertTrue(cookie["httponly"])
+        self.assertEqual(cookie["samesite"], "Lax")
+        self.assertEqual(Session.objects.count(), 0, "セッション行が作成されている")
