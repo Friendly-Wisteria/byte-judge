@@ -30,6 +30,14 @@ DAILY_QUOTA_ERROR = (
     "不安なときは、下記の警察相談専用ダイヤル「#9110」にご相談ください。"
 )
 
+# サイト全体の枠を使い切ったときの案内。個人の上限と混同されないよう、
+# 「自分の使いすぎではない」ことが分かる書き方にする。
+SITE_QUOTA_ERROR = (
+    "本日ぶんの判定枠（サイト全体）が埋まりました。"
+    "日付が変わる（0時）と、また使えるようになります。"
+    "不安なときは、下記の警察相談専用ダイヤル「#9110」にご相談ください。"
+)
+
 
 def _image_discarded_by_memory_limit(request) -> bool:
     """アップロード画像が、フォームに届く前に捨てられた状態かどうか。
@@ -89,6 +97,14 @@ class IndexView(FormView):
             # 入力内容は残さないため、件数以外は出さない
             logger.info("Daily quota reached")
             messages.error(self.request, DAILY_QUOTA_ERROR)
+            return self.render_to_response(self.get_context_data(form=form))
+
+        # 全体の枠を確保する。取れなければ API は叩かない。個人の枠と違い、
+        # 判定を返せたかどうかではなく「API に投げるか」で数える
+        # （拒否や打ち切りでも、出力ぶんの費用は出ているため）。
+        if not settings.VIEW_TEST_MODE and not quota.reserve_site_slot():
+            logger.warning("Site-wide daily limit reached")
+            messages.error(self.request, SITE_QUOTA_ERROR)
             return self.render_to_response(self.get_context_data(form=form))
 
         # キーの有無ではなく「値」で分岐する

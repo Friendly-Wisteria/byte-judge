@@ -171,3 +171,8 @@ MESSAGE_TAGS = {
 VIEW_TEST_MODE = env.bool('VIEW_TEST_MODE', default=False)
 
 CLAUDE_MODEL = env('CLAUDE_MODEL', default='claude-sonnet-5')
+
+# サイト全体で1日に判定できる件数。月額の利用上限を1日で使い切られると
+# 翌月まで全員が判定を受けられなくなるため、被害をその日のうちに閉じ込める。
+# 20件/日は月600件相当で、概算 $12〜24。月額上限($10)を月内に超え得る点に注意。
+SITE_DAILY_LIMIT = env.int('SITE_DAILY_LIMIT', default=20)

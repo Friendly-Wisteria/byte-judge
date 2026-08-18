@@ -14,11 +14,18 @@ from datetime import datetime, timedelta, timezone
 
 from django.conf import settings
 from django.core.signing import BadSignature
+from django.db import IntegrityError
+from django.db.models import F
+
+from .models import DailyUsage
 
 logger = logging.getLogger(__name__)
 
 # 1人あたりの1日の判定回数
 DAILY_LIMIT = 4
+
+# 全体の件数を残す日数。過去ぶんは運用の観測（1日に何件来ているか）に使う。
+RETENTION_DAYS = 90
 
 COOKIE_NAME = "bj_quota"
 COOKIE_SALT = "apps.judge.quota"
@@ -85,4 +92,42 @@ def consume(request, response) -> None:
         httponly=True,
         samesite="Lax",
         secure=not settings.DEBUG,
+    )
+
+
+# --- ここから、サイト全体の1日の上限 -------------------------------------
+# 個人の枠（上）は連打への摩擦だが、こちらは費用の歯止め。月額の利用上限を
+# 1日で使い切られると、翌月まで全員が判定を受けられなくなるため、被害を
+# その日のうちに閉じ込める。
+
+
+def site_limit() -> int:
+    return int(getattr(settings, "SITE_DAILY_LIMIT", 20))
+
+
+def reserve_site_slot(now: datetime | None = None) -> bool:
+    """全体の枠を 1 件ぶん確保する。取れなければ False。
+
+    個人の枠と違い「API に投げた回数」を数える。拒否や打ち切りでも出力ぶんの
+    費用は出ているため、費用の歯止めとしては投げた回数で数えるのが正しい。
+
+    確保は UPDATE ... WHERE count < 上限 の 1 文で行うため、ワーカーが複数
+    あっても上限を超えない。
+    """
+    now = now or _now_jst()
+    today = now.date()
+
+    try:
+        _, created = DailyUsage.objects.get_or_create(date=today)
+    except IntegrityError:
+        created = False  # 同時に作られた。行はあるので続行する。
+    if created:
+        DailyUsage.objects.filter(
+            date__lt=today - timedelta(days=RETENTION_DAYS)
+        ).delete()
+
+    return bool(
+        DailyUsage.objects.filter(date=today, count__lt=site_limit()).update(
+            count=F("count") + 1
+        )
     )
