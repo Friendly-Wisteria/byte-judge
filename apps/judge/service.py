@@ -3,6 +3,7 @@ import io
 import logging
 import random
 import re
+from enum import Enum
 from pathlib import Path
 
 import anthropic
@@ -35,6 +36,21 @@ MAX_IMAGE_LONG_EDGE = 2576
 _JOB_OFFER_TAG_RE = re.compile(r"<\s*(/?)\s*job_offer\s*>", re.IGNORECASE)
 
 logger = logging.getLogger(__name__)
+
+
+class AssessmentError(Enum):
+    """判定結果を返せなかった理由。RiskReportSchema の代わりに返す。
+
+    UNAVAILABLE: API に依頼した上で判定を得られなかった場合。レート制限、
+        月額の利用上限による停止、API 障害・通信断、安全機構による拒否など、
+        ユーザーが入力を直しても解消しない。呼び出し側では「今は判定を使えない」
+        ことと、相談先（#9110）を案内する。
+    FAILED: それ以外の失敗。入力の型違い、プロンプトの読み込み失敗、画像変換の
+        失敗、応答がスキーマを満たさない・途中で切れた場合など。
+    """
+
+    UNAVAILABLE = "unavailable"
+    FAILED = "failed"
 
 
 def _escape_job_offer_tags(text: str) -> str:
@@ -93,17 +109,18 @@ def _pil_to_image_block(img: Image.Image) -> dict:
 
 
 @sensitive_variables()
-def job_offer_risk_assess(job_offer) -> RiskReportSchema:
+def job_offer_risk_assess(job_offer) -> RiskReportSchema | AssessmentError:
     """
     求人の画像をClaude APIに投げて、闇バイトへの関与のリスク度合いを評価する
     Args:
         job_offer (Image): 求人のスクリーンショット
     Returns:
-        リスクアセスの結果 (ReskReportSchema)
+        リスクアセスの結果 (RiskReportSchema)。
+        判定できなかった場合は、その理由 (AssessmentError)
     """
     if not isinstance(job_offer, Image.Image) and not isinstance(job_offer, str):
         logger.error("Type Error: job_offer must be image or text")
-        return None
+        return AssessmentError.FAILED
 
     # 0. VIEW TEST MODEの場合、実際にはAPIを叩かず、サンプルを出力する
     if settings.VIEW_TEST_MODE:
@@ -125,7 +142,7 @@ def job_offer_risk_assess(job_offer) -> RiskReportSchema:
             prompt_text = f.read()
     except FileNotFoundError:
         logger.error(f"Error: Prompt template file not found {PROMPT_PATH}")
-        return None
+        return AssessmentError.FAILED
 
     # 3. 評価対象の組み立て
     #    プロンプトを system、求人を user に分けることで、求人内の文言が
@@ -140,7 +157,7 @@ def job_offer_risk_assess(job_offer) -> RiskReportSchema:
             ]
         except (OSError, ValueError):
             logger.exception("Failed to convert uploaded image")
-            return None
+            return AssessmentError.FAILED
     else:
         # マークダウン等をそのまま渡せるよう求人を <job_offer> で囲む。
         # テキスト側の同名タグは、境界の偽装に使えないよう無害化しておく。
@@ -170,24 +187,27 @@ def job_offer_risk_assess(job_offer) -> RiskReportSchema:
         )
         logger.info(f"Claude Model: {response.model}")
     except anthropic.NotFoundError:
-        # モデルID誤りなど。設定ミスなので再試行しても回復しない。
+        # モデルID誤りなど。設定ミスで再試行しても回復しないが、
+        # ユーザーから見れば「判定を受けられない」状態に変わりはない。
         logger.error(f"Unknown Claude model: {settings.CLAUDE_MODEL}")
-        return None
+        return AssessmentError.UNAVAILABLE
     except anthropic.RateLimitError:
         # SDKが自動リトライした上でなお超過している状態。
         logger.error("Claude API rate limited")
-        return None
+        return AssessmentError.UNAVAILABLE
     except anthropic.APIStatusError as e:
-        # API 由来のエラー（4xx / 5xx など）。
-        # 詳細はログのみに残し、ユーザーには見せない（呼び出し側で汎用メッセージを表示）。
+        # API 由来のエラー（4xx / 5xx など）。月額の利用上限に達して止まった場合も
+        # ここに来る（課金起因は 402 billing_error、混雑や超過は 429 / 5xx と、
+        # 状況でステータスが変わる）。いずれもユーザー側では解消できないため
+        # 区別せず扱い、原因の切り分けはログに残したステータスで行う。
         logger.error(
             f"Claude API error: {e.status_code} {e.type}: {e.message}", exc_info=False
         )
-        return None
+        return AssessmentError.UNAVAILABLE
     except anthropic.APIConnectionError:
         # ネットワーク断・タイムアウト。詳細はログのみに残す。
         logger.exception("Network error while requesting Claude API")
-        return None
+        return AssessmentError.UNAVAILABLE
     except pydantic.ValidationError as e:
         # LLMの出力がスキーマを満たさない（必須項目が空など）。
         # 部分的な結果を画面に出さず、確実にエラーへ倒す。
@@ -203,11 +223,11 @@ def job_offer_risk_assess(job_offer) -> RiskReportSchema:
                 )
             ],
         )
-        return None
+        return AssessmentError.FAILED
     except Exception:
         # 想定外の例外。詳細はログのみに残す。
         logger.exception("Unexpected error while requesting Claude API")
-        return None
+        return AssessmentError.FAILED
 
     # 5. 安全機構による拒否・出力打ち切りの検出
     #    闇バイト＝犯罪関連の文言を扱うため、稀に安全機構が発火する。
@@ -215,16 +235,16 @@ def job_offer_risk_assess(job_offer) -> RiskReportSchema:
     if response.stop_reason == "refusal":
         category = getattr(response.stop_details, "category", None)
         logger.error(f"Claude refused the request (category={category})")
-        return None
+        return AssessmentError.UNAVAILABLE
     if response.stop_reason == "max_tokens":
         logger.error(f"Response truncated: max_tokens ({MAX_TOKENS}) reached")
-        return None
+        return AssessmentError.FAILED
 
     # 6. レスポンスを、RiskReportSchemaでパースして出力
     # 6-1. パースできない場合はエラー
     logger.info("Parsing response...")
     if response.parsed_output is None:
         logger.error("Parse error")
-        return None
+        return AssessmentError.FAILED
 
     return response.parsed_output
