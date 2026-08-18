@@ -17,10 +17,11 @@ import pydantic
 from django.conf import settings
 from django.core.files import uploadedfile
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from PIL import Image
 
 from . import forms, quota, service, views
+from .models import DailyUsage
 from .fixtures import FIXTURES
 from .schema import RiskReportSchema
 
@@ -711,3 +712,79 @@ class DailyQuotaTests(TestCase):
         self.assertTrue(cookie["httponly"])
         self.assertEqual(cookie["samesite"], "Lax")
         self.assertEqual(Session.objects.count(), 0, "セッション行が作成されている")
+
+
+@override_settings(VIEW_TEST_MODE=False, SITE_DAILY_LIMIT=2)
+class SiteDailyLimitTests(TestCase):
+    """サイト全体の1日の上限の検証。
+
+    個人の枠（Cookie）は消せば戻るため、月額の利用上限を1日で使い切られる
+    経路が残る。全体の枠でその日のうちに止まること、止まったあとは API を
+    叩かないこと（＝費用が出ないこと）を見る。
+    """
+
+    def setUp(self):
+        self.report = RiskReportSchema.model_validate(FIXTURES["danger"])
+
+    def _judge(self, client=None):
+        with mock.patch.object(
+            views, "job_offer_risk_assess", return_value=self.report
+        ) as assess:
+            response = (client or self.client).post(
+                "/", {"mode": "text", "text": JOB_TEXT}
+            )
+        return response, assess
+
+    def test_limit_applies_across_visitors(self):
+        """枠が尽きたら、Cookie を持たない別の利用者でも断られること。"""
+        for i in range(settings.SITE_DAILY_LIMIT):
+            with self.subTest(nth=i + 1):
+                response, _ = self._judge(Client())
+                self.assertContains(response, "危険度")
+
+        response, assess = self._judge(Client())
+
+        self.assertIsNone(response.context.get("result"))
+        self.assertContains(response, views.SITE_QUOTA_ERROR)
+        self.assertIn("#9110", views.SITE_QUOTA_ERROR)
+        # 枠を取れなかった判定は API に届かない（＝費用が出ない）
+        assess.assert_not_called()
+
+    def test_count_never_exceeds_the_limit(self):
+        """確保に失敗した回数ぶん、件数が増えていないこと。"""
+        for _ in range(settings.SITE_DAILY_LIMIT + 3):
+            self._judge(Client())
+
+        usage = DailyUsage.objects.get()
+        self.assertEqual(usage.count, settings.SITE_DAILY_LIMIT)
+
+    def test_limit_recovers_at_the_jst_date_boundary(self):
+        before = datetime(2026, 8, 18, 23, 59, tzinfo=quota.JST)
+        after = datetime(2026, 8, 19, 0, 1, tzinfo=quota.JST)
+
+        with mock.patch.object(quota, "_now_jst", return_value=before):
+            for _ in range(settings.SITE_DAILY_LIMIT):
+                self._judge(Client())
+            response, _ = self._judge(Client())
+            self.assertContains(response, views.SITE_QUOTA_ERROR)
+
+        with mock.patch.object(quota, "_now_jst", return_value=after):
+            response, _ = self._judge(Client())
+            self.assertContains(response, "危険度")
+
+    @override_settings(VIEW_TEST_MODE=True)
+    def test_view_test_mode_does_not_consume_the_budget(self):
+        """API を叩かない表示確認モードでは、枠を消費しないこと。"""
+        for _ in range(settings.SITE_DAILY_LIMIT + 1):
+            self.client.post("/", {"mode": "text", "text": JOB_TEXT})
+
+        self.assertFalse(DailyUsage.objects.exists())
+
+    def test_only_a_date_and_a_count_are_stored(self):
+        """数えるために保存するのは、日付と件数だけであること。"""
+        self._judge()
+
+        self.assertEqual(
+            sorted(f.name for f in DailyUsage._meta.fields), ["count", "date", "id"]
+        )
+        self.assertNotIn(MARKER, str(list(DailyUsage.objects.values())))
