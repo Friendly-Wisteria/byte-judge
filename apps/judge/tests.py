@@ -660,7 +660,7 @@ class DailyQuotaTests(TestCase):
 
     @override_settings(VIEW_TEST_MODE=True)
     def test_requests_up_to_the_limit_pass_and_the_next_one_is_refused(self):
-        for i in range(quota.DAILY_LIMIT):
+        for i in range(quota.person_limit()):
             with self.subTest(nth=i + 1):
                 self.assertContains(self._judge(), "危険度")
 
@@ -668,8 +668,8 @@ class DailyQuotaTests(TestCase):
 
         # 上限に達したことと、相談先が案内される
         self.assertIsNone(response.context.get("result"))
-        self.assertIn("#9110", views.DAILY_QUOTA_ERROR)
-        self.assertContains(response, views.DAILY_QUOTA_ERROR)
+        self.assertIn("#9110", views.daily_quota_error())
+        self.assertContains(response, views.daily_quota_error())
 
     @override_settings(VIEW_TEST_MODE=True)
     def test_quota_recovers_at_the_jst_date_boundary(self):
@@ -678,9 +678,9 @@ class DailyQuotaTests(TestCase):
         after = datetime(2026, 8, 19, 0, 1, tzinfo=quota.JST)
 
         with mock.patch.object(quota, "_now_jst", return_value=before):
-            for _ in range(quota.DAILY_LIMIT):
+            for _ in range(quota.person_limit()):
                 self._judge()
-            self.assertContains(self._judge(), views.DAILY_QUOTA_ERROR)
+            self.assertContains(self._judge(), views.daily_quota_error())
 
         with mock.patch.object(quota, "_now_jst", return_value=after):
             self.assertContains(self._judge(), "危険度")
@@ -693,7 +693,7 @@ class DailyQuotaTests(TestCase):
             "job_offer_risk_assess",
             return_value=service.AssessmentError.UNAVAILABLE,
         ):
-            for _ in range(quota.DAILY_LIMIT + 1):
+            for _ in range(quota.person_limit() + 1):
                 self.assertContains(self._judge(), views.LLM_UNAVAILABLE_ERROR)
 
         # 一度も判定を受け取っていないので、枠は満額残っている

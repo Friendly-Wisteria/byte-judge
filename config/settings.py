@@ -172,7 +172,12 @@ VIEW_TEST_MODE = env.bool('VIEW_TEST_MODE', default=False)
 
 CLAUDE_MODEL = env('CLAUDE_MODEL', default='claude-sonnet-5')
 
+# 1人あたり1日に判定できる件数。連打への摩擦で、ブラウザの Cookie で数える。
+# Cookie を消せば戻るため、費用の歯止めは下の SITE_DAILY_LIMIT 側に置いている。
+PERSON_DAILY_LIMIT = env.int('PERSON_DAILY_LIMIT', default=4)
+
 # サイト全体で1日に判定できる件数。月額の利用上限を1日で使い切られると
 # 翌月まで全員が判定を受けられなくなるため、被害をその日のうちに閉じ込める。
-# 20件/日は月600件相当で、概算 $12〜24。月額上限($10)を月内に超え得る点に注意。
+# 1件あたりの費用は実測で約 $0.012。20件/日は月600件相当で約 $7 となり、
+# 月額上限($10)に収まる。上限を変えるときは、この関係も見直すこと。
 SITE_DAILY_LIMIT = env.int('SITE_DAILY_LIMIT', default=20)

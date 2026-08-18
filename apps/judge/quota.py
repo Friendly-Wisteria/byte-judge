@@ -21,8 +21,9 @@ from .models import DailyUsage
 
 logger = logging.getLogger(__name__)
 
-# 1人あたりの1日の判定回数
-DAILY_LIMIT = 4
+def person_limit() -> int:
+    """1人あたりの1日の判定回数。"""
+    return int(getattr(settings, "PERSON_DAILY_LIMIT", 4))
 
 # 全体の件数を残す日数。過去ぶんは運用の観測（1日に何件来ているか）に使う。
 RETENTION_DAYS = 90
@@ -77,13 +78,13 @@ def used_today(request, now: datetime | None = None) -> int:
 
 
 def is_exhausted(request, now: datetime | None = None) -> bool:
-    return used_today(request, now) >= DAILY_LIMIT
+    return used_today(request, now) >= person_limit()
 
 
 def consume(request, response) -> None:
     """判定 1 件ぶんを消費し、カウントを Cookie に書き戻す。"""
     now = _now_jst()
-    used = min(used_today(request, now) + 1, DAILY_LIMIT)
+    used = min(used_today(request, now) + 1, person_limit())
     response.set_signed_cookie(
         COOKIE_NAME,
         f"{_date_key(now)}:{used}",
