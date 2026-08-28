@@ -42,6 +42,12 @@ logger = logging.getLogger(__name__)
 # トークン使用量だけを流すロガー。settings 側で標準出力に向けている。
 usage_logger = logging.getLogger("apps.judge.usage")
 
+# 入力トークン数を丸める単位。input_tokens は貼り付けられた求人文の長さの
+# 近似値になる（判定プロンプトはキャッシュされ cache_read 側に回るため、
+# 2回目以降はほぼ求人文の分だけになる）。費用の見積もりには足りる粒度まで
+# 落として、個々の入力の長さが残らないようにする。
+INPUT_TOKEN_BUCKET = 100
+
 
 class AssessmentError(Enum):
     """判定結果を返せなかった理由。RiskReportSchema の代わりに返す。
@@ -113,14 +119,27 @@ def _pil_to_image_block(img: Image.Image) -> dict:
     }
 
 
+def _as_int(value) -> int:
+    """トークン数を整数にそろえる。読み取れない場合は 0。
+
+    SDK が None を返す項目（cache_read_input_tokens など）があるため。
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _log_token_usage(response) -> None:
     """トークン使用量を、標準出力に1行だけ残す（費用の把握に使う）。
 
     DB には保存しない。README の「保存するのは1日の判定件数だけ」という
     記述を変えずに済ませるため。
 
-    入力文字数は記録しない。入力内容に由来する唯一の情報であり、
-    「入力内容は一切残さない」と言い切れる状態を優先する。
+    入力文字数は記録しない。入力内容に由来する情報であり、「入力内容は
+    一切残さない」と言い切れる状態を優先する。input_tokens も同じ理由で
+    そのままは残さず、INPUT_TOKEN_BUCKET 単位に丸めて出す（キー名を
+    input_100 にして、丸めた値だと分かるようにしている）。
 
     時刻は時単位に丸める。秒まで残すと、判定した時刻から利用者をたどれる
     余地が残るため。書式側でも %(asctime)s を使わない。
@@ -128,18 +147,33 @@ def _log_token_usage(response) -> None:
     判定を返せたかどうかにかかわらず、応答が返った時点で呼ぶ。拒否や打ち切り
     でも出力ぶんの費用は出ているため、費用の把握としてはそれが正しい。
     """
-    usage = getattr(response, "usage", None)
-    if usage is None:
-        return
-    hour = datetime.now(JST).replace(minute=0, second=0, microsecond=0)
-    usage_logger.info(
-        "token_usage hour=%s model=%s input=%s output=%s cache_read=%s",
-        hour.isoformat(timespec="hours"),
-        response.model,
-        getattr(usage, "input_tokens", 0) or 0,
-        getattr(usage, "output_tokens", 0) or 0,
-        getattr(usage, "cache_read_input_tokens", 0) or 0,
-    )
+    try:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return
+        hour = datetime.now(JST).replace(minute=0, second=0, microsecond=0)
+        # 四捨五入で丸める。切り捨てだと合計が常に少なめに出て、費用の
+        # 見積もりがずれていくため。
+        half = INPUT_TOKEN_BUCKET // 2
+        input_tokens = _as_int(getattr(usage, "input_tokens", 0))
+        input_bucket = (
+            (input_tokens + half) // INPUT_TOKEN_BUCKET * INPUT_TOKEN_BUCKET
+        )
+        usage_logger.info(
+            "token_usage hour=%s model=%s input_%s=%s output=%s cache_read=%s",
+            hour.isoformat(timespec="hours"),
+            response.model,
+            INPUT_TOKEN_BUCKET,
+            input_bucket,
+            _as_int(getattr(usage, "output_tokens", 0)),
+            _as_int(getattr(usage, "cache_read_input_tokens", 0)),
+        )
+    except Exception:
+        # 使用量のログは費用把握のための付随情報にすぎない。ここでの失敗が
+        # 判定の成否を変えてはいけないので、握りつぶして先に進む。
+        # （呼び出し元の try の中にいるため、投げると API 障害として扱われ、
+        #   判定できたはずの結果が捨てられてしまう）
+        logger.warning("Could not log token usage")
 
 
 @sensitive_variables()
