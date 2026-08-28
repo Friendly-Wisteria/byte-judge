@@ -13,37 +13,67 @@ from .service import AssessmentError, job_offer_risk_assess
 
 logger = logging.getLogger(__name__)
 
-# LLM 側の事情（月額の利用上限・レート制限・API 障害・安全機構による拒否）で
-# 判定を受けられないときの案内。時間をおいても回復するとは限らないため、
-# 再試行の案内だけで終わらせず、相談先（ページ下部の注意書き）まで示す。
-LLM_UNAVAILABLE_ERROR = (
-    "現在、AIによる判定を利用できません。時間をおいて、もう一度お試しください。"
-    "不安なときは、警察相談専用ダイヤル「#9110」や"
-    "消費者ホットライン「188（いやや）」にご相談ください。"
+# 判定を返せないときに必ず添える相談先。判定が止まっていても、相談先の情報だけは
+# 届ける必要がある（危険な求人を前にした人を、案内なしで締め出さない）。
+# 上限・API 障害・拒否・パース失敗のどの経路でも、これを末尾に付ける。
+CONSULTATION_GUIDE = (
+    "不安なときは、ひとりで抱えずに相談してください。\n"
+    "・警察相談専用ダイヤル #9110（犯罪かもしれない、と思ったとき）\n"
+    "・消費者ホットライン 188（いやや）（お金を払ってしまったとき）"
 )
 
-# 1日の上限に達したときの案内。判定を断る場面なので、再開時刻だけでなく
-# 相談先も示す（危険な求人を前にした人を、案内なしで締め出さない）。
-def daily_quota_error() -> str:
-    """個人の上限に達したときの案内。
+# 判定不可の案内であることをテンプレートに伝える印。入力の直し方を案内する
+# バリデーションエラーとは見え方を変えるために使う。
+UNAVAILABLE_TAG = "judgment-unavailable"
 
-    件数は設定から取るため、読み込み時ではなく呼ばれた時に組み立てる。
+
+def _unavailable(reason: str) -> str:
+    """判定不可の案内を組み立てる。相談先が必ず末尾に付く形にする。
+
+    文言をここに通すことで、経路ごとに相談先を書き忘れることがなくなる。
+    改行はテンプレート側で <br> にして、「理由 / これからどうなるか /
+    相談先」の3段に見せる。
     """
-    return (
-        f"本日の判定は上限（1日{quota.person_limit()}件）に達しました。"
-        "日付が変わる（0時）と、また使えるようになります。"
-        "不安なときは、警察相談専用ダイヤル「#9110」や"
-        "消費者ホットライン「188（いやや）」にご相談ください。"
-    )
+    return f"{reason}\n\n{CONSULTATION_GUIDE}"
+
+
+# LLM 側の事情（月額の利用上限・レート制限・API 障害・安全機構による拒否）で
+# 判定を受けられないときの案内。利用者が入力を直しても解消しないため、
+# 「あなたの書き方の問題ではない」ことが分かる書き方にする。
+LLM_UNAVAILABLE_ERROR = _unavailable(
+    "いまは、AIによる判定を行えません。\n"
+    "サービス側の問題なので、文章を直しても解決しません。"
+    "時間をおくと使えるようになることがありますが、いつ戻るかはお約束できません。"
+)
+
+# 応答は得られたが、判定結果として受け取れなかった場合（構造化出力のパース
+# 失敗・出力の打ち切りなど）。再試行で通ることがあるため、そちらを先に案内する。
+ASSESSMENT_FAILED_ERROR = _unavailable(
+    "判定の結果を、正しく受け取れませんでした。\n"
+    "もう一度お試しください。何度試しても同じときは、時間をおいてからお試しください。"
+)
 
 # サイト全体の枠を使い切ったときの案内。個人の上限と混同されないよう、
 # 「自分の使いすぎではない」ことが分かる書き方にする。
-SITE_QUOTA_ERROR = (
-    "本日ぶんの判定枠（サイト全体）が埋まりました。"
-    "日付が変わる（0時）と、また使えるようになります。"
-    "不安なときは、警察相談専用ダイヤル「#9110」や"
-    "消費者ホットライン「188（いやや）」にご相談ください。"
+SITE_QUOTA_ERROR = _unavailable(
+    "本日ぶんの判定枠（サイト全体）が埋まりました。あなたの使いすぎではありません。\n"
+    "日付が変わると（日本時間の0時）、また使えるようになります。"
 )
+
+
+# 1日の上限に達したときの案内。件数は設定から取るため、読み込み時ではなく
+# 呼ばれた時に組み立てる。
+def daily_quota_error() -> str:
+    """個人の上限に達したときの案内。"""
+    return _unavailable(
+        f"本日ぶんの判定（1日{quota.person_limit()}件）を使い切りました。\n"
+        "日付が変わると（日本時間の0時）、また使えるようになります。"
+    )
+
+
+def _report_unavailable(request, text: str) -> None:
+    """判定不可の案内を、見出し付きで表示させる印とともに積む。"""
+    messages.error(request, text, extra_tags=UNAVAILABLE_TAG)
 
 
 # エラー報告（DEBUG=True 時の 500 ページ、ADMINS 設定時の管理者メール）に
@@ -72,7 +102,7 @@ class IndexView(FormView):
         if quota.is_exhausted(self.request):
             # 入力内容は残さないため、件数以外は出さない
             logger.info("Daily quota reached")
-            messages.error(self.request, daily_quota_error())
+            _report_unavailable(self.request, daily_quota_error())
             return self.render_to_response(self.get_context_data(form=form))
 
         # 全体の枠を確保する。取れなければ API は叩かない。個人の枠と違い、
@@ -80,7 +110,7 @@ class IndexView(FormView):
         # （拒否や打ち切りでも、出力ぶんの費用は出ているため）。
         if not settings.VIEW_TEST_MODE and not quota.reserve_site_slot():
             logger.warning("Site-wide daily limit reached")
-            messages.error(self.request, SITE_QUOTA_ERROR)
+            _report_unavailable(self.request, SITE_QUOTA_ERROR)
             return self.render_to_response(self.get_context_data(form=form))
 
         # 画像入力は停止中。フォームに image フィールドが無いため、POST に
@@ -93,13 +123,10 @@ class IndexView(FormView):
             if result is AssessmentError.UNAVAILABLE:
                 # LLM に判定させること自体ができていない状態。
                 logger.error("Risk assessment unavailable: no judgment from the LLM")
-                messages.error(self.request, LLM_UNAVAILABLE_ERROR)
+                _report_unavailable(self.request, LLM_UNAVAILABLE_ERROR)
             else:
                 logger.error("Risk assessment failed: service returned %r", result)
-                messages.error(
-                    self.request,
-                    "判定に失敗しました。時間をおいて、もう一度お試しください。",
-                )
+                _report_unavailable(self.request, ASSESSMENT_FAILED_ERROR)
             return self.render_to_response(self.get_context_data(form=form))
 
         # view test modeの時の警告表示

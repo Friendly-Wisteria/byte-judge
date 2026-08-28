@@ -17,7 +17,7 @@ import pydantic
 from django.conf import settings
 from django.core.files import uploadedfile
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client, TestCase, override_settings
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from PIL import Image
 
 from . import forms, quota, service, views
@@ -33,6 +33,20 @@ IMAGE_PAUSED = "画像（スクリーンショット）入力は停止中。再�
 # 現れてはいけない。fixtures の文言と偶然一致しないよう一意な文字列にする。
 MARKER = "ZZMARKER7f3a9cZZ"
 JOB_TEXT = f"日給5万円・即日手渡し・Telegramで連絡ください 合言葉:{MARKER}"
+
+
+def assert_consultation_is_offered(test, response):
+    """判定不可の案内に、相談先が両方出ていることを確かめる。
+
+    ページ下部の注意書きにも #9110 と 188 があるため、番号を探すだけでは
+    案内側が空でも緑になる。案内は注意書きと書き分けてあるので、案内側の
+    文言（かぎ括弧ではなく空白区切り）で確かめる。
+    """
+    test.assertIn("#9110", views.CONSULTATION_GUIDE)
+    test.assertIn("188", views.CONSULTATION_GUIDE)
+    test.assertContains(response, "判定をお届けできませんでした")
+    test.assertContains(response, "警察相談専用ダイヤル #9110")
+    test.assertContains(response, "消費者ホットライン 188（いやや）")
 
 
 def png_at_least(min_bytes):
@@ -685,17 +699,75 @@ class ApiUnavailableIsGuidedToConsultationTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context.get("result"))
-        self.assertIn("#9110", views.LLM_UNAVAILABLE_ERROR)
-        self.assertIn("188", views.LLM_UNAVAILABLE_ERROR)
-        self.assertContains(response, views.LLM_UNAVAILABLE_ERROR)
+        self.assertContains(response, "いまは、AIによる判定を行えません")
+        assert_consultation_is_offered(self, response)
 
-    def test_other_failures_keep_the_retry_message(self):
+    def test_parse_failure_also_offers_the_hotlines(self):
+        """応答を受け取れなかった場合も、再試行の案内だけで終わらせないこと。"""
         with mock.patch.object(
             views, "job_offer_risk_assess", return_value=service.AssessmentError.FAILED
         ):
             response = self.client.post("/", {"mode": "text", "text": JOB_TEXT})
 
-        self.assertContains(response, "判定に失敗しました")
+        self.assertContains(response, "判定の結果を、正しく受け取れませんでした")
+        assert_consultation_is_offered(self, response)
+
+
+class UnavailableGuidanceTests(SimpleTestCase):
+    """判定を返せないときの案内そのものの検証。
+
+    上限・API 障害・拒否・パース失敗のどの経路でも、判定は止まっていても
+    相談先の情報は届ける必要がある。ページ下部の注意書きにも同じ番号が
+    あるため、レンダリング結果ではなく案内の文言を直接検査する。
+    """
+
+    def _messages(self):
+        return {
+            "個人の日次上限": views.daily_quota_error(),
+            "サイト全体の日次上限": views.SITE_QUOTA_ERROR,
+            "API 側の事情で判定不可": views.LLM_UNAVAILABLE_ERROR,
+            "判定結果を受け取れず": views.ASSESSMENT_FAILED_ERROR,
+        }
+
+    def test_every_message_offers_both_hotlines(self):
+        for label, text in self._messages().items():
+            with self.subTest(case=label):
+                self.assertIn("#9110", text)
+                self.assertIn("188", text)
+
+    def test_no_message_leaks_a_technical_detail(self):
+        """技術的なエラーコードや内部の名前を利用者に見せないこと。"""
+        forbidden = (
+            "AssessmentError", "UNAVAILABLE", "FAILED", "Traceback",
+            "Exception", "None", "429", "402", "refusal", "max_tokens",
+            "stop_reason", "API",
+        )
+        for label, text in self._messages().items():
+            for token in forbidden:
+                with self.subTest(case=label, token=token):
+                    self.assertNotIn(token, text)
+
+    def test_quota_messages_say_when_judging_resumes(self):
+        """上限で断る場合は、いつ使えるようになるかを伝えること。"""
+        for label in ("個人の日次上限", "サイト全体の日次上限"):
+            with self.subTest(case=label):
+                self.assertIn("0時", self._messages()[label])
+
+
+@override_settings(VIEW_TEST_MODE=True)
+class InputErrorIsNotUnavailableTests(TestCase):
+    """入力を直せば通るエラーを、判定不可の案内と混同しないことの検証。
+
+    空入力に相談先まで出すと、案内が薄まって本当に判定を受けられないときに
+    効かなくなる。見出しと相談先は、判定不可のときだけ出す。
+    """
+
+    def test_empty_input_is_not_dressed_as_unavailable(self):
+        response = self.client.post("/", {"mode": "text", "text": ""})
+
+        self.assertContains(response, forms.NO_INPUT_ERROR)
+        self.assertNotContains(response, "判定をお届けできませんでした")
+        self.assertNotContains(response, "警察相談専用ダイヤル #9110")
 
 
 class DailyQuotaTests(TestCase):
@@ -719,9 +791,9 @@ class DailyQuotaTests(TestCase):
 
         # 上限に達したことと、相談先が案内される
         self.assertIsNone(response.context.get("result"))
-        self.assertIn("#9110", views.daily_quota_error())
-        self.assertIn("188", views.daily_quota_error())
-        self.assertContains(response, views.daily_quota_error())
+        self.assertContains(response, "本日ぶんの判定")
+        self.assertContains(response, "日付が変わると")
+        assert_consultation_is_offered(self, response)
 
     @override_settings(VIEW_TEST_MODE=True)
     def test_quota_recovers_at_the_jst_date_boundary(self):
@@ -732,7 +804,7 @@ class DailyQuotaTests(TestCase):
         with mock.patch.object(quota, "_now_jst", return_value=before):
             for _ in range(quota.person_limit()):
                 self._judge()
-            self.assertContains(self._judge(), views.daily_quota_error())
+            self.assertContains(self._judge(), "本日ぶんの判定")
 
         with mock.patch.object(quota, "_now_jst", return_value=after):
             self.assertContains(self._judge(), "危険度")
@@ -746,7 +818,7 @@ class DailyQuotaTests(TestCase):
             return_value=service.AssessmentError.UNAVAILABLE,
         ):
             for _ in range(quota.person_limit() + 1):
-                self.assertContains(self._judge(), views.LLM_UNAVAILABLE_ERROR)
+                self.assertContains(self._judge(), "いまは、AIによる判定を行えません")
 
         # 一度も判定を受け取っていないので、枠は満額残っている
         with override_settings(VIEW_TEST_MODE=True):
@@ -797,9 +869,8 @@ class SiteDailyLimitTests(TestCase):
         response, assess = self._judge(Client())
 
         self.assertIsNone(response.context.get("result"))
-        self.assertContains(response, views.SITE_QUOTA_ERROR)
-        self.assertIn("#9110", views.SITE_QUOTA_ERROR)
-        self.assertIn("188", views.SITE_QUOTA_ERROR)
+        self.assertContains(response, "あなたの使いすぎではありません")
+        assert_consultation_is_offered(self, response)
         # 枠を取れなかった判定は API に届かない（＝費用が出ない）
         assess.assert_not_called()
 
@@ -819,7 +890,7 @@ class SiteDailyLimitTests(TestCase):
             for _ in range(settings.SITE_DAILY_LIMIT):
                 self._judge(Client())
             response, _ = self._judge(Client())
-            self.assertContains(response, views.SITE_QUOTA_ERROR)
+            self.assertContains(response, "あなたの使いすぎではありません")
 
         with mock.patch.object(quota, "_now_jst", return_value=after):
             response, _ = self._judge(Client())
