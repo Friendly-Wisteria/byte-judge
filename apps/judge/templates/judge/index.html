@@ -108,10 +108,19 @@
             <div class="row justify-content-center">
                 <div class="col-12 col-md-10 col-lg-7">
                     <!-- ヘッダー -->
+                    {% comment %}
+                      判定を返せないときの案内は、入力を直せば通るバリデーション
+                      エラーと混同されないよう、見出しを添える（views の
+                      UNAVAILABLE_TAG が付いたメッセージ）。本文の改行を活かして
+                      「理由 / これからどうなるか / 相談先」の3段に見せる。
+                    {% endcomment %}
                     {% if messages %}
                     {% for message in messages %}
-                    <div class="alert alert-{{ message.tags }}" role="alert">
-                        {{ message }}
+                    <div class="alert alert-{{ message.level_tag }}" role="alert">
+                        {% if "judgment-unavailable" in message.tags %}
+                        <div class="fw-bold mb-2">判定をお届けできませんでした</div>
+                        {% endif %}
+                        {{ message|linebreaksbr }}
                     </div>
                     {% endfor %}
                     {% endif %}
