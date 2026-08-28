@@ -8,6 +8,7 @@ import io
 import logging
 import math
 import os
+import pathlib
 import re
 import tempfile
 from datetime import datetime
@@ -23,8 +24,10 @@ from PIL import Image
 
 from . import forms, quota, service, views
 from .models import DailyUsage
+from .evalset import dataset as evalset_dataset
+from .evalset import metrics as evalset_metrics
 from .fixtures import FIXTURES
-from .schema import RiskReportSchema
+from .schema import Level, RiskReportSchema
 
 # 画像入力の停止にともない眠らせているテストの理由。機能を再開するときは
 # この @skip を外せばそのまま使える（再開時に必要な修正は README を参照）。
@@ -724,6 +727,218 @@ class ApiUnavailableIsGuidedToConsultationTests(TestCase):
 
 
 @override_settings(VIEW_TEST_MODE=False)
+class EvalDatasetTests(SimpleTestCase):
+    """評価用テストセットの読み込みの検証。
+
+    データ本体はリポジトリに含めていないため、壊れた TOML や書き間違いは
+    実行するまで気づけない。読み込みの時点で落として、原因を出す。
+    """
+
+    def _write(self, body):
+        directory = tempfile.mkdtemp()
+        path = pathlib.Path(directory) / "cases.toml"
+        path.write_text(body, encoding="utf-8")
+        return path
+
+    def test_a_well_formed_file_is_loaded(self):
+        path = self._write(
+            """
+[[case]]
+id = "obvious-01"
+category = "obvious"
+expect_signals = ["高額報酬"]
+text = "日給5万円 即日手渡し"
+
+[[case]]
+id = "legit-01"
+category = "legitimate"
+text = "コンビニスタッフ募集 時給1100円"
+"""
+        )
+
+        cases = evalset_dataset.load_cases(path)
+
+        self.assertEqual([c.id for c in cases], ["obvious-01", "legit-01"])
+        self.assertEqual(cases[0].expect_signals, ("高額報酬",))
+        self.assertTrue(cases[0].is_dangerous)
+        self.assertFalse(cases[1].is_dangerous)
+
+    def test_duplicate_ids_are_rejected(self):
+        path = self._write(
+            """
+[[case]]
+id = "dup"
+category = "gray"
+text = "a"
+
+[[case]]
+id = "dup"
+category = "gray"
+text = "b"
+"""
+        )
+
+        with self.assertRaisesMessage(evalset_dataset.DatasetError, "重複"):
+            evalset_dataset.load_cases(path)
+
+    def test_an_unknown_category_is_rejected(self):
+        path = self._write(
+            """
+[[case]]
+id = "x"
+category = "unknown"
+text = "a"
+"""
+        )
+
+        with self.assertRaisesMessage(evalset_dataset.DatasetError, "category"):
+            evalset_dataset.load_cases(path)
+
+    def test_empty_text_is_rejected(self):
+        path = self._write(
+            """
+[[case]]
+id = "x"
+category = "gray"
+text = "   "
+"""
+        )
+
+        with self.assertRaisesMessage(evalset_dataset.DatasetError, "text"):
+            evalset_dataset.load_cases(path)
+
+    def test_a_missing_file_explains_where_to_look(self):
+        missing = pathlib.Path(tempfile.mkdtemp()) / "nope.toml"
+
+        with self.assertRaisesMessage(evalset_dataset.DatasetError, "README"):
+            evalset_dataset.load_cases(missing)
+
+
+class EvalMetricsTests(SimpleTestCase):
+    """指標の計算の検証。
+
+    ここを間違えると、改善したかどうかの判断そのものを誤る。とくに見逃し率は
+    最重視する指標なので、何を見逃しに数えるかを固定しておく。
+    """
+
+    def _make_outcome(self, category, level=None, enough=True, error=None, **kwargs):
+        return evalset_metrics.Outcome(
+            case_id=kwargs.pop("case_id", "c1"),
+            category=category,
+            level=level,
+            label=kwargs.pop("label", None),
+            score=kwargs.pop("score", None),
+            has_enough_info=enough,
+            error=error,
+            signal_text=kwargs.pop("signal_text", ""),
+        )
+
+    def test_a_safe_verdict_on_a_dangerous_case_is_a_miss(self):
+        result = evalset_metrics.false_negative(
+            [self._make_outcome("obvious", level=Level.SAFE)]
+        )
+
+        self.assertEqual(result.rate, 1.0)
+        self.assertEqual(result.detail["危険な兆候なしと判定"], 1)
+
+    def test_insufficient_info_on_a_dangerous_case_is_also_a_miss(self):
+        """情報不足も見逃しに数えること（画面上は警告が出ていないため）。"""
+        result = evalset_metrics.false_negative(
+            [self._make_outcome("obvious", level=Level.DANGER, enough=False)]
+        )
+
+        self.assertEqual(result.rate, 1.0)
+        self.assertEqual(result.detail["情報不足で判定を出せず"], 1)
+
+    def test_a_caution_verdict_is_not_a_miss(self):
+        """要注意は警告が届いているので、見逃しには数えない。"""
+        result = evalset_metrics.false_negative(
+            [self._make_outcome("disguised", level=Level.CAUTION)]
+        )
+
+        self.assertEqual(result.rate, 0.0)
+
+    def test_only_dangerous_categories_count_towards_the_miss_rate(self):
+        result = evalset_metrics.false_negative(
+            [
+                self._make_outcome("legitimate", level=Level.SAFE),
+                self._make_outcome("gray", level=Level.SAFE),
+            ]
+        )
+
+        self.assertEqual(result.total, 0)
+        self.assertIsNone(result.rate)
+
+    def test_errors_are_excluded_from_the_denominator(self):
+        """判定を受け取れなかった分は、モデルの見逃しとして数えない。"""
+        result = evalset_metrics.false_negative(
+            [
+                self._make_outcome("obvious", error="UNAVAILABLE"),
+                self._make_outcome("obvious", level=Level.DANGER),
+            ]
+        )
+
+        self.assertEqual(result.total, 1)
+        self.assertEqual(result.count, 0)
+
+    def test_stability_notices_a_split_verdict(self):
+        outcomes = [
+            self._make_outcome("gray", case_id="g1", label="要注意", score=40),
+            self._make_outcome("gray", case_id="g1", label="情報不足", score=20),
+            self._make_outcome("gray", case_id="g1", label="要注意", score=42),
+        ]
+
+        result = evalset_metrics.stability(outcomes, category="gray")
+
+        self.assertEqual(result.cases, 1)
+        self.assertAlmostEqual(result.label_agreement, 2 / 3)
+        self.assertEqual(result.split_cases, ["g1"])
+        self.assertGreater(result.score_stdev, 0)
+
+    def test_stability_ignores_cases_run_only_once(self):
+        result = evalset_metrics.stability(
+            [self._make_outcome("gray", case_id="g1", label="要注意")], category="gray"
+        )
+
+        self.assertEqual(result.cases, 0)
+        self.assertIn("対象なし", result.format())
+
+    def test_signal_recall_counts_the_expected_grounds(self):
+        cases = [
+            evalset_dataset.Case(
+                id="c1",
+                category="obvious",
+                text="x",
+                expect_signals=("高額報酬|高すぎる報酬", "Telegram"),
+            )
+        ]
+        outcomes = [self._make_outcome("obvious", signal_text="高すぎる報酬 日給5万円")]
+
+        result = evalset_metrics.signal_recall(cases, outcomes)
+
+        # 言い回しが違っても、"|" で並べた言い換えのどれかに当たれば拾う
+        self.assertEqual((result.count, result.total), (1, 2))
+        self.assertEqual(result.detail["c1"], ["Telegram"])
+
+    def test_signal_recall_reports_a_miss_by_its_first_wording(self):
+        cases = [
+            evalset_dataset.Case(
+                id="c1", category="obvious", text="x",
+                expect_signals=("秘匿アプリ|Telegram|Signal",),
+            )
+        ]
+
+        result = evalset_metrics.signal_recall(
+            cases, [self._make_outcome("obvious", signal_text="高すぎる報酬")]
+        )
+
+        self.assertEqual(result.detail["c1"], ["秘匿アプリ"])
+
+    def test_a_ratio_with_no_target_does_not_report_zero_percent(self):
+        """分母が0のときに 0% と出すと、良い成績と読めてしまう。"""
+        self.assertEqual(evalset_metrics.Ratio(0, 0).format(), "対象なし")
+
+
 class TokenUsageIsLoggedTests(TestCase):
     """トークン使用量が、標準出力にだけ残ることの検証。
 
