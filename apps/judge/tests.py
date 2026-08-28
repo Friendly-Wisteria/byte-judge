@@ -758,9 +758,26 @@ class TokenUsageIsLoggedTests(TestCase):
         )
 
         self.assertIn("model=claude-sonnet-5", line)
-        self.assertIn("input=1234", line)
+        self.assertIn("input_100=1200", line)  # 1234 を100単位に丸めた値
         self.assertIn("output=567", line)
         self.assertIn("cache_read=890", line)
+
+    def test_input_tokens_are_rounded_to_a_hundred(self):
+        """入力トークン数は、そのまま残さないこと。
+
+        input_tokens は貼り付けられた求人文の長さの近似値になる。判定プロンプトは
+        キャッシュされて cache_read 側に回るため、2回目以降はほぼ求人文の分だけに
+        なり、入力の長さがそのまま残ってしまう。
+        """
+        for raw, rounded in [(4821, "4800"), (4850, "4900"), (49, "0"), (150, "200")]:
+            with self.subTest(input_tokens=raw):
+                line = self._usage_line(
+                    self._assess(
+                        input_tokens=raw, output_tokens=1, cache_read_input_tokens=0
+                    )
+                )
+                self.assertIn(f"input_100={rounded}", line)
+                self.assertNotIn(str(raw), line)
 
     def test_timestamp_is_rounded_to_the_hour(self):
         """分・秒を残さないこと（判定した時刻から利用者をたどれないように）。"""
@@ -781,7 +798,7 @@ class TokenUsageIsLoggedTests(TestCase):
 
         self.assertEqual(
             re.findall(r"(\w+)=", line),
-            ["hour", "model", "input", "output", "cache_read"],
+            ["hour", "model", "input_100", "output", "cache_read"],
         )
 
     def test_the_job_text_never_reaches_the_usage_log(self):
@@ -792,6 +809,29 @@ class TokenUsageIsLoggedTests(TestCase):
         self.assertIn("token_usage", output)
         self.assertNotIn(MARKER, output)
         self.assertNotIn(str(len(JOB_TEXT)), self._usage_line(output))
+
+    def test_a_failing_usage_log_does_not_change_the_verdict(self):
+        """使用量のログで例外が出ても、判定の結果を捨てないこと。
+
+        ログの組み立ては API 呼び出しの try の中にある。ここで投げると
+        API 障害として扱われ、受け取れていた判定が失われる。
+        """
+
+        class ExplodingUsage:
+            def __getattr__(self, name):
+                raise RuntimeError("boom")
+
+        response = mock.Mock(
+            stop_reason="end_turn",
+            model="claude-sonnet-5",
+            parsed_output=RiskReportSchema.model_validate(FIXTURES["danger"]),
+            usage=ExplodingUsage(),
+        )
+        with mock.patch.object(service.anthropic, "Anthropic") as client_class:
+            client_class.return_value.messages.parse.return_value = response
+            result = service.job_offer_risk_assess(JOB_TEXT)
+
+        self.assertIsInstance(result, RiskReportSchema)
 
     def test_usage_goes_to_stdout(self):
         """標準エラーではなく標準出力に出す設定になっていること。"""
