@@ -141,6 +141,9 @@ class Command(BaseCommand):
     def _run(self, plan):
         outcomes = []
         done, total = 0, sum(n for _, n in plan)
+        # 端末なら1行を上書きし、ファイルへ流すときは1行ずつ残す
+        # （52件で20分ほどかかるため、リダイレクトして眺めることがある）
+        interactive = getattr(self.stdout, "isatty", lambda: False)()
         started = time.monotonic()
         for case, repeats in plan:
             for nth in range(repeats):
@@ -148,13 +151,17 @@ class Command(BaseCommand):
                 self.stdout.write(
                     f"[{done}/{total}] {case.id} ({case.category})"
                     + (f" {nth + 1}回目" if repeats > 1 else ""),
-                    ending="\r",
+                    ending="\r" if interactive else "\n",
                 )
                 self.stdout.flush()
                 outcomes.append(self._judge(case))
-        elapsed = time.monotonic() - started
-        self.stdout.write(f"\n実行時間 {elapsed / 60:.1f} 分\n")
+        self.stdout.write(f"\n実行時間 {self._duration(time.monotonic() - started)}\n")
         return outcomes
+
+    def _duration(self, seconds: float) -> str:
+        if seconds < 60:
+            return f"{seconds:.0f} 秒"
+        return f"{int(seconds // 60)} 分 {int(seconds % 60):02d} 秒"
 
     def _judge(self, case):
         result = service.job_offer_risk_assess(case.text)
@@ -171,6 +178,7 @@ class Command(BaseCommand):
         under = metrics.underrated_obvious(outcomes)
         fp = metrics.false_positive(outcomes)
         stab = metrics.stability(outcomes)
+        gray = metrics.stability(outcomes, category="gray")
         recall = metrics.signal_recall(cases, outcomes)
         errs = metrics.errors(outcomes)
 
@@ -191,9 +199,9 @@ class Command(BaseCommand):
         lines += [
             "",
             "-- 2. グレー求人への判定の安定性 " + "-" * 27,
-            f"  {metrics.stability(outcomes, category='gray').format()}",
+            f"  {gray.format()}",
         ]
-        split = metrics.stability(outcomes, category="gray").split_cases
+        split = gray.split_cases
         if split:
             lines.append(f"    判定が割れたケース: {', '.join(split)}")
         lines += [
@@ -210,7 +218,7 @@ class Command(BaseCommand):
             f"  明らかな闇バイトを要注意止まり  {under.format()}",
             f"  普通の求人を危険と判定（偽陽性） {fp.format()}",
         ]
-        if stab.cases:
+        if stab.cases > gray.cases:
             lines.append(f"  全体の安定性 {stab.format()}")
         if errs:
             lines.append("  判定できなかった理由: " + ", ".join(

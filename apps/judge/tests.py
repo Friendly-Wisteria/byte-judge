@@ -19,11 +19,14 @@ import pydantic
 from django.conf import settings
 from django.core.files import uploadedfile
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import Client, SimpleTestCase, TestCase, override_settings
 from PIL import Image
 
 from . import forms, quota, service, views
 from .models import DailyUsage
+from .management.commands import evaluate_prompt
 from .evalset import dataset as evalset_dataset
 from .evalset import metrics as evalset_metrics
 from .fixtures import FIXTURES
@@ -812,6 +815,104 @@ text = "   "
 
         with self.assertRaisesMessage(evalset_dataset.DatasetError, "README"):
             evalset_dataset.load_cases(missing)
+
+
+class EvalCommandTests(TestCase):
+    """evaluate_prompt コマンドの検証。
+
+    実際に API を叩くと費用が出るので、サービス層を差し替えて配線だけを見る。
+    """
+
+    CASES = """
+[[case]]
+id = "o1"
+category = "obvious"
+expect_signals = ["高額報酬|高すぎる報酬"]
+text = "日給5万円 即日手渡し Telegram"
+
+[[case]]
+id = "l1"
+category = "legitimate"
+text = "コンビニスタッフ 時給1100円 株式会社◯◯"
+
+[[case]]
+id = "g1"
+category = "gray"
+text = "簡単な仕分け作業 日給1万5千円"
+"""
+
+    def setUp(self):
+        self.path = pathlib.Path(tempfile.mkdtemp()) / "cases.toml"
+        self.path.write_text(self.CASES, encoding="utf-8")
+
+    def _run(self, **kwargs):
+        out = io.StringIO()
+        call_command("evaluate_prompt", cases=self.path, stdout=out, **kwargs)
+        return out.getvalue()
+
+    @override_settings(VIEW_TEST_MODE=True)
+    def test_dry_run_shows_the_plan_without_calling_the_api(self):
+        """--dry-run は API を叩かず、構成と見積もりだけ出すこと。"""
+        with mock.patch.object(evaluate_prompt.service, "job_offer_risk_assess") as api:
+            output = self._run(dry_run=True)
+
+        api.assert_not_called()
+        self.assertIn("ケース数 3", output)
+        self.assertIn("費用の見積もり", output)
+
+    @override_settings(VIEW_TEST_MODE=True)
+    def test_it_refuses_to_run_while_view_test_mode_is_on(self):
+        """固定サンプルが返る状態で評価すると、結果が意味を失う。"""
+        with mock.patch.object(evaluate_prompt.service, "job_offer_risk_assess") as api:
+            with self.assertRaisesMessage(CommandError, "VIEW_TEST_MODE"):
+                self._run(yes=True)
+
+        api.assert_not_called()
+
+    @override_settings(VIEW_TEST_MODE=False, CLAUDE_MODEL="claude-test-9")
+    def test_the_report_carries_the_model_and_the_metrics(self):
+        report = RiskReportSchema.model_validate(FIXTURES["danger"])
+        with mock.patch.object(
+            evaluate_prompt.service, "job_offer_risk_assess", return_value=report
+        ):
+            output = self._run(yes=True)
+
+        self.assertIn("claude-test-9", output)
+        self.assertIn("危険求人の見逃し率", output)
+        self.assertIn("グレー求人への判定の安定性", output)
+        self.assertIn("シグナル理由の妥当性", output)
+
+    @override_settings(VIEW_TEST_MODE=False)
+    def test_gray_cases_are_repeated_by_default(self):
+        """安定性を測るため、グレーだけ既定で繰り返すこと。"""
+        report = RiskReportSchema.model_validate(FIXTURES["danger"])
+        with mock.patch.object(
+            evaluate_prompt.service, "job_offer_risk_assess", return_value=report
+        ) as api:
+            self._run(yes=True)
+
+        # obvious 1 + legitimate 1 + gray 1×3
+        self.assertEqual(api.call_count, 2 + evaluate_prompt.DEFAULT_GRAY_REPEAT)
+
+    @override_settings(VIEW_TEST_MODE=False)
+    def test_an_api_failure_is_counted_but_does_not_stop_the_run(self):
+        with mock.patch.object(
+            evaluate_prompt.service,
+            "job_offer_risk_assess",
+            return_value=service.AssessmentError.UNAVAILABLE,
+        ):
+            output = self._run(yes=True)
+
+        self.assertIn("判定できなかった理由", output)
+        self.assertIn("UNAVAILABLE", output)
+        # 見逃し率の分母から外れるので、割合は出ない
+        self.assertIn("対象なし", output)
+
+    @override_settings(VIEW_TEST_MODE=True)
+    def test_a_category_filter_narrows_the_run(self):
+        output = self._run(dry_run=True, category=["legitimate"])
+
+        self.assertIn("ケース数 1", output)
 
 
 class EvalMetricsTests(SimpleTestCase):
