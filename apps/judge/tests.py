@@ -8,6 +8,7 @@ import io
 import logging
 import math
 import os
+import re
 import tempfile
 from datetime import datetime
 from unittest import mock, skip
@@ -78,7 +79,16 @@ class capture_logs:
     下げる（＝漏れるものがあれば必ず捕まる状態にして検査する）。
     """
 
-    LOGGER_NAMES = ("", "apps.judge", "anthropic", "httpx", "django")
+    LOGGER_NAMES = (
+        "",
+        "apps.judge",
+        # 使用量のロガーは propagate=False なので、明示的に挙げないと
+        # ここでの検査をすり抜ける（漏れがあっても緑になる）。
+        "apps.judge.usage",
+        "anthropic",
+        "httpx",
+        "django",
+    )
 
     def __enter__(self):
         self.stream = io.StringIO()
@@ -711,6 +721,101 @@ class ApiUnavailableIsGuidedToConsultationTests(TestCase):
 
         self.assertContains(response, "判定の結果を、正しく受け取れませんでした")
         assert_consultation_is_offered(self, response)
+
+
+@override_settings(VIEW_TEST_MODE=False)
+class TokenUsageIsLoggedTests(TestCase):
+    """トークン使用量が、標準出力にだけ残ることの検証。
+
+    費用の把握には使いたいが、DB に持つと「保存するのは1日の判定件数だけ」
+    という約束が崩れる。また、入力の長さは入力内容に由来する唯一の情報なので
+    記録しない。記録する項目が増えていないことも、ここで固定する。
+    """
+
+    def _assess(self, **usage):
+        response = mock.Mock(
+            stop_reason="end_turn",
+            model="claude-sonnet-5",
+            parsed_output=RiskReportSchema.model_validate(FIXTURES["danger"]),
+            usage=mock.Mock(**usage),
+        )
+        with mock.patch.object(service.anthropic, "Anthropic") as client_class:
+            client_class.return_value.messages.parse.return_value = response
+            with capture_logs() as logs:
+                service.job_offer_risk_assess(JOB_TEXT)
+        return logs.text
+
+    def _usage_line(self, output):
+        lines = [line for line in output.splitlines() if "token_usage" in line]
+        self.assertEqual(len(lines), 1, "使用量のログが1行だけ出ていない")
+        return lines[0]
+
+    def test_model_and_token_counts_are_recorded(self):
+        line = self._usage_line(
+            self._assess(
+                input_tokens=1234, output_tokens=567, cache_read_input_tokens=890
+            )
+        )
+
+        self.assertIn("model=claude-sonnet-5", line)
+        self.assertIn("input=1234", line)
+        self.assertIn("output=567", line)
+        self.assertIn("cache_read=890", line)
+
+    def test_timestamp_is_rounded_to_the_hour(self):
+        """分・秒を残さないこと（判定した時刻から利用者をたどれないように）。"""
+        line = self._usage_line(
+            self._assess(input_tokens=1, output_tokens=1, cache_read_input_tokens=0)
+        )
+
+        hour = re.search(r"hour=(\S+)", line).group(1)
+        self.assertRegex(hour, r"^\d{4}-\d{2}-\d{2}T\d{2}\+09:00$")
+
+    def test_only_the_agreed_fields_are_recorded(self):
+        """入力文字数など、取り決めにない項目が増えていないこと。"""
+        line = self._usage_line(
+            self._assess(
+                input_tokens=1234, output_tokens=567, cache_read_input_tokens=890
+            )
+        )
+
+        self.assertEqual(
+            re.findall(r"(\w+)=", line),
+            ["hour", "model", "input", "output", "cache_read"],
+        )
+
+    def test_the_job_text_never_reaches_the_usage_log(self):
+        output = self._assess(
+            input_tokens=1234, output_tokens=567, cache_read_input_tokens=890
+        )
+
+        self.assertIn("token_usage", output)
+        self.assertNotIn(MARKER, output)
+        self.assertNotIn(str(len(JOB_TEXT)), self._usage_line(output))
+
+    def test_usage_goes_to_stdout(self):
+        """標準エラーではなく標準出力に出す設定になっていること。"""
+        logger_conf = settings.LOGGING["loggers"]["apps.judge.usage"]
+        handler = settings.LOGGING["handlers"][logger_conf["handlers"][0]]
+
+        self.assertEqual(handler["stream"], "ext://sys.stdout")
+        self.assertFalse(logger_conf["propagate"])
+
+    def test_usage_format_carries_no_precise_timestamp(self):
+        """書式が秒までの時刻を足すと、丸めた意味が無くなる。"""
+        logger_conf = settings.LOGGING["loggers"]["apps.judge.usage"]
+        handler = settings.LOGGING["handlers"][logger_conf["handlers"][0]]
+        fmt = settings.LOGGING["formatters"][handler["formatter"]]["format"]
+
+        self.assertNotIn("asctime", fmt)
+
+    def test_nothing_is_written_to_the_database(self):
+        """使用量のために、保存するモデルが増えていないこと。"""
+        from django.apps import apps as django_apps
+
+        models = {m.__name__ for m in django_apps.get_app_config("judge").get_models()}
+
+        self.assertEqual(models, {"DailyUsage"})
 
 
 class ExternalTransferNoticeTests(TestCase):

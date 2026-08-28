@@ -111,11 +111,24 @@ LOGGING = {
             # ログの出力形式（時刻、ログレベル、モジュール名、メッセージ）
             'format': '[%(asctime)s] %(levelname)s [%(name)s:%(lineno)s] %(message)s',
         },
+        'usage': {
+            # 使用量のログは、時刻をメッセージ側に持たせる。standard は秒まで
+            # 出るため、ここでは付けない（判定した時刻から利用者をたどれる余地を
+            # 残さないよう、時単位に丸めた値だけにする）。
+            'format': '%(message)s',
+        },
     },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
             'formatter': 'standard',
+        },
+        # トークン使用量は費用の把握に使うため、集計しやすいよう標準出力へ
+        # 分けて出す（引数なしの StreamHandler は標準エラーになる）。
+        'usage_stdout': {
+            'class': 'logging.StreamHandler',
+            'stream': 'ext://sys.stdout',
+            'formatter': 'usage',
         },
         # 必要に応じてファイル出力などもここに追加
     },
@@ -124,6 +137,13 @@ LOGGING = {
         'apps.judge': {
             'handlers': ['console'],
             'level': 'DEBUG',  # 開発時はDEBUGなどに変更
+            'propagate': False,
+        },
+        # トークン使用量。DB には保存せず、標準出力に1行ずつ出すだけにする。
+        # 親（apps.judge）へは流さない（標準エラーに二重に出さないため）。
+        'apps.judge.usage': {
+            'handlers': ['usage_stdout'],
+            'level': 'INFO',
             'propagate': False,
         },
     },

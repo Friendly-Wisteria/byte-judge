@@ -3,6 +3,7 @@ import io
 import logging
 import random
 import re
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from django.views.decorators.debug import sensitive_variables
 from PIL import Image, ImageOps
 
 from .fixtures import FIXTURES
+from .quota import JST
 from .schema import RiskReportSchema
 
 # Appのパスの取得
@@ -36,6 +38,9 @@ MAX_IMAGE_LONG_EDGE = 2576
 _JOB_OFFER_TAG_RE = re.compile(r"<\s*(/?)\s*job_offer\s*>", re.IGNORECASE)
 
 logger = logging.getLogger(__name__)
+
+# トークン使用量だけを流すロガー。settings 側で標準出力に向けている。
+usage_logger = logging.getLogger("apps.judge.usage")
 
 
 class AssessmentError(Enum):
@@ -106,6 +111,35 @@ def _pil_to_image_block(img: Image.Image) -> dict:
             "data": base64.standard_b64encode(buffer.getvalue()).decode("utf-8"),
         },
     }
+
+
+def _log_token_usage(response) -> None:
+    """トークン使用量を、標準出力に1行だけ残す（費用の把握に使う）。
+
+    DB には保存しない。README の「保存するのは1日の判定件数だけ」という
+    記述を変えずに済ませるため。
+
+    入力文字数は記録しない。入力内容に由来する唯一の情報であり、
+    「入力内容は一切残さない」と言い切れる状態を優先する。
+
+    時刻は時単位に丸める。秒まで残すと、判定した時刻から利用者をたどれる
+    余地が残るため。書式側でも %(asctime)s を使わない。
+
+    判定を返せたかどうかにかかわらず、応答が返った時点で呼ぶ。拒否や打ち切り
+    でも出力ぶんの費用は出ているため、費用の把握としてはそれが正しい。
+    """
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return
+    hour = datetime.now(JST).replace(minute=0, second=0, microsecond=0)
+    usage_logger.info(
+        "token_usage hour=%s model=%s input=%s output=%s cache_read=%s",
+        hour.isoformat(timespec="hours"),
+        response.model,
+        getattr(usage, "input_tokens", 0) or 0,
+        getattr(usage, "output_tokens", 0) or 0,
+        getattr(usage, "cache_read_input_tokens", 0) or 0,
+    )
 
 
 @sensitive_variables()
@@ -186,6 +220,7 @@ def job_offer_risk_assess(job_offer) -> RiskReportSchema | AssessmentError:
             output_format=RiskReportSchema,
         )
         logger.info(f"Claude Model: {response.model}")
+        _log_token_usage(response)
     except anthropic.NotFoundError:
         # モデルID誤りなど。設定ミスで再試行しても回復しないが、
         # ユーザーから見れば「判定を受けられない」状態に変わりはない。
