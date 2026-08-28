@@ -1069,7 +1069,10 @@ class TokenUsageIsLoggedTests(TestCase):
     def test_model_and_token_counts_are_recorded(self):
         line = self._usage_line(
             self._assess(
-                input_tokens=1234, output_tokens=567, cache_read_input_tokens=890
+                input_tokens=1234,
+                output_tokens=567,
+                cache_read_input_tokens=890,
+                cache_creation_input_tokens=432,
             )
         )
 
@@ -1077,6 +1080,8 @@ class TokenUsageIsLoggedTests(TestCase):
         self.assertIn("input_100=1200", line)  # 1234 を100単位に丸めた値
         self.assertIn("output=567", line)
         self.assertIn("cache_read=890", line)
+        # 固定プロンプトの分量なので丸めない（命中率を出すのに要る）
+        self.assertIn("cache_write=432", line)
 
     def test_input_tokens_are_rounded_to_a_hundred(self):
         """入力トークン数は、そのまま残さないこと。
@@ -1104,6 +1109,32 @@ class TokenUsageIsLoggedTests(TestCase):
         hour = re.search(r"hour=(\S+)", line).group(1)
         self.assertRegex(hour, r"^\d{4}-\d{2}-\d{2}T\d{2}\+09:00$")
 
+    def test_cache_hit_and_miss_are_both_visible(self):
+        """命中・不命中のどちらも記録されること。
+
+        判定プロンプトがキャッシュに当たるかで1件あたりの費用が2倍以上変わる。
+        cache_read だけでは命中率が出せないので、書き込み側も要る。
+        """
+        hit = self._usage_line(
+            self._assess(
+                input_tokens=1,
+                output_tokens=1,
+                cache_read_input_tokens=6330,
+                cache_creation_input_tokens=0,
+            )
+        )
+        miss = self._usage_line(
+            self._assess(
+                input_tokens=1,
+                output_tokens=1,
+                cache_read_input_tokens=0,
+                cache_creation_input_tokens=6330,
+            )
+        )
+
+        self.assertIn("cache_read=6330 cache_write=0", hit)
+        self.assertIn("cache_read=0 cache_write=6330", miss)
+
     def test_only_the_agreed_fields_are_recorded(self):
         """入力文字数など、取り決めにない項目が増えていないこと。"""
         line = self._usage_line(
@@ -1114,7 +1145,7 @@ class TokenUsageIsLoggedTests(TestCase):
 
         self.assertEqual(
             re.findall(r"(\w+)=", line),
-            ["hour", "model", "input_100", "output", "cache_read"],
+            ["hour", "model", "input_100", "output", "cache_read", "cache_write"],
         )
 
     def test_the_job_text_never_reaches_the_usage_log(self):
