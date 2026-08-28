@@ -23,3 +23,8 @@ db.sqlite3
 .claude/
 
 claudecode_tasks.md
+
+# 評価用テストセットのデータ本体。危険側は合成データだが、よくできているほど
+# 募集文のテンプレートとして使えてしまうため、公開する成果物には含めない。
+# 作り方は apps/judge/evalset/README.md を参照。
+apps/judge/evalset/cases.toml
