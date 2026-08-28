@@ -1,6 +1,6 @@
 <!doctype html>
 {% comment %}
-  闇バイト 危険度チェック  Bootstrap(Vapor)版 フロントのみ
+  闇バイト 危険度チェック  Bootstrap(Flatly)版 フロントのみ
   スクショ / テキスト の2経路に対応。ドラッグ&ドロップ / 画像ペースト対応。判定処理は含みません。
 
   view から渡す context の想定キー:
@@ -25,11 +25,24 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>バイトジャッジ - そのバイト、闇バイトかも?</title>
+        <!-- 白背景の Flatly。危険の赤（#e74c3c）が背景に埋もれないテーマを選んでいる。
+             不安な状態で訪れる利用者に緊張感を与えないよう、警告色は判定結果と
+             危険シグナルにだけ使い、地の画面は白と紺で構成する。 -->
         <link rel="stylesheet"
-              href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.8/dist/vapor/bootstrap.min.css"
-              integrity="sha384-V2qF16o6CEJntOUT/bjC83Rs2wB24++/hfV0D2AV4lM3rGwY1U56PszercfsQWnm"
+              href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.8/dist/flatly/bootstrap.min.css"
+              integrity="sha384-MZ3pnZEBOL1wAG2nrP+M1A9LCApF229c39UC+1T3B96aI3VjuAWMeb1I99GMJacE"
               crossorigin="anonymous">
         <style>
+            /* Flatly は .alert を「塗りつぶし＋白文字」にするため、白背景では
+               コントラストが 4.5 を下回る（情報不足の案内で 2.56、危険で 3.82）。
+               判定できない理由や次に取る行動を伝える文章なので、塗りは残した
+               まま文字色を濃くする。差し替え前の Vapor は濃色文字で 4.51 あり、
+               これはテーマ変更による後退なので元の水準に戻す。 */
+            .alert,
+            .alert a,
+            .alert .alert-link {
+                color: var(--bs-emphasis-color);
+            }
             .eyebrow {
                 font-size: 0.72rem;
                 letter-spacing: 0.18em;
@@ -68,7 +81,7 @@
                 align-items: center;
                 justify-content: center;
                 gap: 1rem;
-                background: rgba(13, 12, 34, 0.82);
+                background: rgba(255, 255, 255, 0.92);
                 backdrop-filter: blur(4px);
                 text-align: center;
                 padding: 1rem;
@@ -81,10 +94,10 @@
     <body>
         <div id="loading-overlay" role="status" aria-live="polite">
             <div
-                class="spinner-border text-info"
+                class="spinner-border text-primary"
                 style="width: 3rem; height: 3rem"
             ></div>
-            <div class="fs-5 fw-semibold text-info mt-2" id="loading-msg">
+            <div class="fs-5 fw-semibold text-primary mt-2" id="loading-msg">
                 読み取り中…
             </div>
             <div class="small text-secondary">
@@ -102,7 +115,7 @@
                     </div>
                     {% endfor %}
                     {% endif %}
-                    <div class="eyebrow text-info mb-1">
+                    <div class="eyebrow text-primary mb-1">
                         募集文を貼り付けるだけ ・ 30秒で、闇バイトの可能性をチェック
                     </div>
                     <h1 class="fw-bold mb-2">バイトジャッジ</h1>
