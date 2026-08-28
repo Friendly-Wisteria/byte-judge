@@ -141,6 +141,11 @@ def _log_token_usage(response) -> None:
     そのままは残さず、INPUT_TOKEN_BUCKET 単位に丸めて出す（キー名を
     input_100 にして、丸めた値だと分かるようにしている）。
 
+    cache_read と cache_write は丸めない。どちらも固定の判定プロンプトの
+    分量であって、利用者の入力には由来しないため。この2つが揃って初めて
+    プロンプトキャッシュの命中率が分かる。命中するかどうかで1件あたりの
+    費用が2倍以上変わるので、上限（SITE_DAILY_LIMIT）を決めるのに要る。
+
     時刻は時単位に丸める。秒まで残すと、判定した時刻から利用者をたどれる
     余地が残るため。書式側でも %(asctime)s を使わない。
 
@@ -160,13 +165,15 @@ def _log_token_usage(response) -> None:
             (input_tokens + half) // INPUT_TOKEN_BUCKET * INPUT_TOKEN_BUCKET
         )
         usage_logger.info(
-            "token_usage hour=%s model=%s input_%s=%s output=%s cache_read=%s",
+            "token_usage hour=%s model=%s input_%s=%s output=%s cache_read=%s"
+            " cache_write=%s",
             hour.isoformat(timespec="hours"),
             response.model,
             INPUT_TOKEN_BUCKET,
             input_bucket,
             _as_int(getattr(usage, "output_tokens", 0)),
             _as_int(getattr(usage, "cache_read_input_tokens", 0)),
+            _as_int(getattr(usage, "cache_creation_input_tokens", 0)),
         )
     except Exception:
         # 使用量のログは費用把握のための付随情報にすぎない。ここでの失敗が
