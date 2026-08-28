@@ -6,7 +6,6 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from django.views.generic import FormView
-from PIL import Image
 
 from . import quota
 from .forms import JobOfferRiskAssessForm
@@ -47,31 +46,6 @@ SITE_QUOTA_ERROR = (
 )
 
 
-def _image_discarded_by_memory_limit(request) -> bool:
-    """アップロード画像が、フォームに届く前に捨てられた状態かどうか。
-
-    FILE_UPLOAD_HANDLERS をメモリのみに固定しているため、リクエスト全体が
-    FILE_UPLOAD_MAX_MEMORY_SIZE を超えると MemoryFileUploadHandler は自身を
-    無効化する。後続のハンドラが居ないので、ファイル部分は request.FILES に
-    載らないまま読み捨てられ、フォームには空の画像フィールドが渡る。
-
-    ファイル以外のフィールドは DATA_UPLOAD_MAX_MEMORY_SIZE（既定 2.5MB）で
-    別に制限され、超えればここに来る前に 413 になる。したがって multipart の
-    リクエストが FILE_UPLOAD_MAX_MEMORY_SIZE を超えていて FILES が空なら、
-    超過分はファイル部分＝捨てられた画像とみなせる。
-    （両上限の大小関係は apps/judge/tests.py で検証している）
-    """
-    if not request.content_type.startswith("multipart/form-data"):
-        return False
-    if request.FILES:
-        return False
-    try:
-        content_length = int(request.META.get("CONTENT_LENGTH") or 0)
-    except ValueError:
-        return False
-    return content_length > settings.FILE_UPLOAD_MAX_MEMORY_SIZE
-
-
 # エラー報告（DEBUG=True 時の 500 ページ、ADMINS 設定時の管理者メール）に
 # POST の求人テキストが載らないようにする。
 # あわせて、判定結果のページがブラウザやプロキシのキャッシュに保存されないよう
@@ -82,12 +56,6 @@ class IndexView(FormView):
     template_name = "judge/index.html"
     form_class = JobOfferRiskAssessForm
 
-    def get_form_kwargs(self):
-        kwargs = super().get_form_kwargs()
-        if self.request.method in ("POST", "PUT"):
-            kwargs["image_discarded"] = _image_discarded_by_memory_limit(self.request)
-        return kwargs
-
     def get(self, request, *args, **kwargs):
         # view test modeの時の警告表示
         if settings.VIEW_TEST_MODE:
@@ -97,7 +65,7 @@ class IndexView(FormView):
             )
         return super().get(request, *args, **kwargs)
 
-    # 例外レポートのローカル変数一覧に求人テキスト・画像が載らないようにする
+    # 例外レポートのローカル変数一覧に求人テキストが載らないようにする
     @sensitive_variables()
     def form_valid(self, form):
         # 上限に達している場合は、API を叩かずに案内だけ返す
@@ -115,17 +83,9 @@ class IndexView(FormView):
             messages.error(self.request, SITE_QUOTA_ERROR)
             return self.render_to_response(self.get_context_data(form=form))
 
-        # キーの有無ではなく「値」で分岐する
-        image = form.cleaned_data.get("image")
-        text = form.cleaned_data.get("text")
-
-        if image:
-            job_offer_data = Image.open(image)  # PIL.Image.Image
-        else:
-            job_offer_data = text  # str
-
-        # 型判別は job_offer_risk_assess 内の isinstance に任せて、そのまま渡す
-        result = job_offer_risk_assess(job_offer_data)
+        # 画像入力は停止中。フォームに image フィールドが無いため、POST に
+        # image を含めても cleaned_data には載らず、判定はテキストだけで行う。
+        result = job_offer_risk_assess(form.cleaned_data["text"])
 
         # 判定できなかった場合、サービス層は結果の代わりに理由を返す。
         # どちらも結果は表示せず、理由に応じた案内を出す。

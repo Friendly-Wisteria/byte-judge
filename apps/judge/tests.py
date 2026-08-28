@@ -10,7 +10,7 @@ import math
 import os
 import tempfile
 from datetime import datetime
-from unittest import mock
+from unittest import mock, skip
 
 import anthropic
 import pydantic
@@ -24,6 +24,10 @@ from . import forms, quota, service, views
 from .models import DailyUsage
 from .fixtures import FIXTURES
 from .schema import RiskReportSchema
+
+# 画像入力の停止にともない眠らせているテストの理由。機能を再開するときは
+# この @skip を外せばそのまま使える（再開時に必要な修正は README を参照）。
+IMAGE_PAUSED = "画像（スクリーンショット）入力は停止中。再開時にこの skip を外す。"
 
 # 求人テキストに紛れ込ませる目印。ディスク・ログ・セッションのいずれにも
 # 現れてはいけない。fixtures の文言と偶然一致しないよう一意な文字列にする。
@@ -161,6 +165,7 @@ class UploadNeverTouchesDiskTests(TestCase):
             settings.FILE_UPLOAD_HANDLERS,
         )
 
+    @skip(IMAGE_PAUSED)
     def test_memory_limit_stays_above_the_form_limit(self):
         # form の上限を下回ると、拒否対象のファイルが握り潰されて
         # 「画像サイズが大きすぎます」を返せなくなる
@@ -168,6 +173,7 @@ class UploadNeverTouchesDiskTests(TestCase):
             settings.FILE_UPLOAD_MAX_MEMORY_SIZE, forms.MAX_IMAGE_SIZE
         )
 
+    @skip(IMAGE_PAUSED)
     @override_settings(VIEW_TEST_MODE=True)
     def test_oversized_upload_leaves_no_file_on_disk(self):
         """FILE_UPLOAD_MAX_MEMORY_SIZE 超の画像を POST しても一時ファイルが作られない。
@@ -206,6 +212,7 @@ class UploadNeverTouchesDiskTests(TestCase):
             "TemporaryUploadedFile が生成された＝入力画像が一度ディスクに書かれている",
         )
 
+    @skip(IMAGE_PAUSED)
     @override_settings(VIEW_TEST_MODE=True)
     def test_image_above_django_default_threshold_is_still_processed(self):
         """Django 既定の 2.5MB を超える画像が、メモリ上で判定まで通ること。
@@ -404,6 +411,7 @@ class ResultPageIsNotCachedTests(TestCase):
         self.assertIn("no-store", response.headers.get("Cache-Control", ""))
 
 
+@skip(IMAGE_PAUSED)
 @override_settings(VIEW_TEST_MODE=True)
 class OversizedRequestIsReportedTests(TestCase):
     """リクエスト全体のサイズ超過で画像が捨てられた場合の案内の検証。
@@ -451,12 +459,54 @@ class OversizedRequestIsReportedTests(TestCase):
         self.assertContains(response, forms.OVERSIZED_IMAGE_ERROR)
         self.assertNotContains(response, "どちらかを入力してください")
 
-    def test_empty_submission_still_reports_the_missing_input(self):
-        """本当に何も入力されていない場合は、従来どおりの案内のままであること。"""
+
+@override_settings(VIEW_TEST_MODE=True)
+class ImageInputIsClosedTests(TestCase):
+    """画像入力の受け口が閉じていることの検証。
+
+    UI をコメントアウトしただけでは、POST に image を含めれば判定まで通って
+    しまう。フォームのフィールドごと閉じたことを、実際にリクエストを通して
+    確認する（画像機能を再開するときは、このクラスを削除する）。
+    """
+
+    def test_form_has_no_image_field(self):
+        self.assertNotIn("image", forms.JobOfferRiskAssessForm().fields)
+
+    def test_image_only_post_is_not_judged(self):
+        """画像だけを POST しても判定されず、募集文を求められること。"""
+        response = self.client.post(
+            "/", {"mode": "image", "image": upload(png_at_least(2000))}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context.get("result"))
+        self.assertContains(response, forms.NO_INPUT_ERROR)
+
+    def test_image_sent_with_text_is_ignored(self):
+        """テキストに画像を添えて POST しても、判定に渡るのはテキストだけであること。"""
+        report = RiskReportSchema.model_validate(FIXTURES["danger"])
+        with mock.patch.object(
+            views, "job_offer_risk_assess", return_value=report
+        ) as assess:
+            self.client.post(
+                "/",
+                {
+                    "mode": "image",
+                    "text": JOB_TEXT,
+                    "image": upload(png_at_least(2000)),
+                },
+            )
+
+        (passed,) = assess.call_args.args
+        self.assertIsInstance(passed, str)
+        self.assertEqual(passed, JOB_TEXT)
+
+    def test_empty_submission_reports_the_missing_input(self):
+        """何も入力されていない場合は、募集文の入力を案内すること。"""
         response = self.client.post("/", {"mode": "text", "text": ""})
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "どちらかを入力してください")
+        self.assertContains(response, forms.NO_INPUT_ERROR)
 
 
 class MissingInfoIsSurfacedTests(TestCase):
