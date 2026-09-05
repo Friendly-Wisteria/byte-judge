@@ -31,3 +31,5 @@ apps/judge/evalset/cases.toml
 
 # 作業レポート。開発の記録であり、成果物ではない。
 .reports/
+
+privacy_policy_draft_v2.md
