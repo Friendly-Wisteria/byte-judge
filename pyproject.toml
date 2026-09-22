@@ -11,3 +11,31 @@ dependencies = [
     "pillow>=12.3.0",
     "pydantic>=2.13.4",
 ]
+
+[dependency-groups]
+# 開発用。lint は本番の実行に要らないので、実行時の依存から外す。
+dev = ["ruff>=0.16.8"]
+
+[tool.ruff]
+target-version = "py313"
+# Django が生成するファイル。こちらの書き方を当てても直しようがない。
+extend-exclude = ["apps/judge/migrations"]
+
+[tool.ruff.lint]
+# ruff 既定（F / E / I / B / SIM / RUF / BLE など）に、このアプリで効くものを足す。
+# 行長（E501）は入れていない：日本語の文言・コメントが多く、折り返すとかえって
+# 読みにくくなる箇所が支配的なため。
+extend-select = [
+    "C4",   # 内包表記まわりの無駄
+    "DJ",   # Django 固有の落とし穴（文字列項目の null=True、__str__ の欠落など）
+    "G",    # logging に f-string を使わない（%s で遅延評価させる）
+    "LOG",  # logging の誤用
+    "PIE",  # 書いても効かないコード
+    "T20",  # print の混入。デバッグ用の print で入力内容が標準出力に出るのを防ぐ
+    "UP",   # 新しい書き方への追従（Python 3.13 前提）
+]
+ignore = [
+    # Django と衝突する。Meta.ordering = ["-date"] や、テスト用スタブの
+    # クラス属性にまで「__init__ で初期化するか ClassVar を付けろ」と言ってくる。
+    "RUF012",
+]

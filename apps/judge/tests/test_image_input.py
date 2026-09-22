@@ -178,11 +178,13 @@ class ImageIsConvertedForTheApiTests(TestCase):
 
     def test_a_conversion_failure_is_reported_as_failed(self):
         """変換で例外が出ても、500 にせず判定不可として返すこと。"""
-        with mock.patch.object(
-            service, "_pil_to_image_block", side_effect=OSError("broken")
+        with (
+            mock.patch.object(
+                service, "_pil_to_image_block", side_effect=OSError("broken")
+            ),
+            mock.patch.object(service.anthropic, "Anthropic") as client_class,
         ):
-            with mock.patch.object(service.anthropic, "Anthropic") as client_class:
-                result = service.job_offer_risk_assess(Image.new("RGB", (10, 10)))
+            result = service.job_offer_risk_assess(Image.new("RGB", (10, 10)))
 
         self.assertIs(result, service.AssessmentError.FAILED)
         client_class.return_value.messages.parse.assert_not_called()

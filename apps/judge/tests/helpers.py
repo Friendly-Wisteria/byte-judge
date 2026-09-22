@@ -16,7 +16,6 @@ from PIL import Image
 from .. import views
 from ..schema import RiskReportSchema
 
-
 # 画像入力の停止にともない眠らせているテストの理由。機能を再開するときは
 # この @skip を外せばそのまま使える（再開時に必要な修正は README を参照）。
 IMAGE_PAUSED = "画像（スクリーンショット）入力は停止中。再開時にこの skip を外す。"
