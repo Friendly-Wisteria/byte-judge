@@ -39,3 +39,10 @@ ignore = [
     # クラス属性にまで「__init__ で初期化するか ClassVar を付けろ」と言ってくる。
     "RUF012",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# SDK 更新の検証テストは手動実行で、応答の体裁（ですます調・読みやすさ）を人が
+# 読んで確かめる。print は意図的に残している。出力するのは合成した求人文に対する
+# 応答で、利用者の入力は通らないため、T20 を入れた理由（入力内容が標準出力に
+# 出るのを防ぐ）には触れない。
+"apps/judge/tests/test_package_anthropic.py" = ["T201"]
