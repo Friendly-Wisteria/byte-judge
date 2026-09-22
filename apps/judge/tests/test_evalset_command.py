@@ -51,9 +51,11 @@ class EvalCommandTests(TestCase):
     @override_settings(VIEW_TEST_MODE=True)
     def test_it_refuses_to_run_while_view_test_mode_is_on(self):
         """固定サンプルが返る状態で評価すると、結果が意味を失う。"""
-        with mock.patch.object(evaluate_prompt.service, "job_offer_risk_assess") as api:
-            with self.assertRaisesMessage(CommandError, "VIEW_TEST_MODE"):
-                self._run(yes=True)
+        with (
+            mock.patch.object(evaluate_prompt.service, "job_offer_risk_assess") as api,
+            self.assertRaisesMessage(CommandError, "VIEW_TEST_MODE"),
+        ):
+            self._run(yes=True)
 
         api.assert_not_called()
 

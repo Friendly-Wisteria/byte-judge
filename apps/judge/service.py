@@ -175,7 +175,7 @@ def _log_token_usage(response) -> None:
             _as_int(getattr(usage, "cache_read_input_tokens", 0)),
             _as_int(getattr(usage, "cache_creation_input_tokens", 0)),
         )
-    except Exception:
+    except Exception:  # noqa: BLE001
         # 使用量のログは費用把握のための付随情報にすぎない。ここでの失敗が
         # 判定の成否を変えてはいけないので、握りつぶして先に進む。
         # （呼び出し元の try の中にいるため、投げると API 障害として扱われ、
@@ -213,10 +213,10 @@ def job_offer_risk_assess(job_offer) -> RiskReportSchema | AssessmentError:
     # 2. プロンプトの読み込み
     logger.info("Loading prompt template...")
     try:
-        with open(PROMPT_PATH, "r", encoding="utf-8") as f:
+        with open(PROMPT_PATH, encoding="utf-8") as f:
             prompt_text = f.read()
     except FileNotFoundError:
-        logger.error(f"Error: Prompt template file not found {PROMPT_PATH}")
+        logger.error("Error: Prompt template file not found %s", PROMPT_PATH)
         return AssessmentError.FAILED
 
     # 3. 評価対象の組み立て
@@ -260,12 +260,12 @@ def job_offer_risk_assess(job_offer) -> RiskReportSchema | AssessmentError:
             messages=[{"role": "user", "content": content}],
             output_format=RiskReportSchema,
         )
-        logger.info(f"Claude Model: {response.model}")
+        logger.info("Claude Model: %s", response.model)
         _log_token_usage(response)
     except anthropic.NotFoundError:
         # モデルID誤りなど。設定ミスで再試行しても回復しないが、
         # ユーザーから見れば「判定を受けられない」状態に変わりはない。
-        logger.error(f"Unknown Claude model: {settings.CLAUDE_MODEL}")
+        logger.error("Unknown Claude model: %s", settings.CLAUDE_MODEL)
         return AssessmentError.UNAVAILABLE
     except anthropic.RateLimitError:
         # SDKが自動リトライした上でなお超過している状態。
@@ -277,7 +277,11 @@ def job_offer_risk_assess(job_offer) -> RiskReportSchema | AssessmentError:
         # 状況でステータスが変わる）。いずれもユーザー側では解消できないため
         # 区別せず扱い、原因の切り分けはログに残したステータスで行う。
         logger.error(
-            f"Claude API error: {e.status_code} {e.type}: {e.message}", exc_info=False
+            "Claude API error: %s %s: %s",
+            e.status_code,
+            e.type,
+            e.message,
+            exc_info=False,
         )
         return AssessmentError.UNAVAILABLE
     except anthropic.APIConnectionError:
@@ -310,10 +314,10 @@ def job_offer_risk_assess(job_offer) -> RiskReportSchema | AssessmentError:
     #    この場合 stop_reason が refusal になり、内容は空またはスキーマ不適合になる。
     if response.stop_reason == "refusal":
         category = getattr(response.stop_details, "category", None)
-        logger.error(f"Claude refused the request (category={category})")
+        logger.error("Claude refused the request (category=%s)", category)
         return AssessmentError.UNAVAILABLE
     if response.stop_reason == "max_tokens":
-        logger.error(f"Response truncated: max_tokens ({MAX_TOKENS}) reached")
+        logger.error("Response truncated: max_tokens (%s) reached", MAX_TOKENS)
         return AssessmentError.FAILED
 
     # 6. レスポンスを、RiskReportSchemaでパースして出力

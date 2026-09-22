@@ -16,8 +16,14 @@ from django.test import TestCase, override_settings
 
 from .. import forms, service, views
 from .helpers import (
-    IMAGE_PAUSED, JOB_TEXT, MARKER, api_status_error, capture_logs, png_at_least,
-    schema_validation_error, upload,
+    IMAGE_PAUSED,
+    JOB_TEXT,
+    MARKER,
+    api_status_error,
+    capture_logs,
+    png_at_least,
+    schema_validation_error,
+    upload,
 )
 
 
@@ -39,6 +45,16 @@ class UploadNeverTouchesDiskTests(TestCase):
             ["django.core.files.uploadhandler.MemoryFileUploadHandler"],
         )
 
+    def _spy_on_temporary_files(self, created):
+        """TemporaryUploadedFile が作られたら、そのパスを created に記録する。"""
+        original_init = uploadedfile.TemporaryUploadedFile.__init__
+
+        def spy_init(temp_file, *args, **kwargs):
+            original_init(temp_file, *args, **kwargs)
+            created.append(temp_file.temporary_file_path())
+
+        return spy_init
+
     @override_settings(VIEW_TEST_MODE=True)
     def test_an_uploaded_file_leaves_nothing_on_disk(self):
         """ファイルを添えて POST しても、一時ファイルが作られないこと。
@@ -58,23 +74,21 @@ class UploadNeverTouchesDiskTests(TestCase):
         for label, size in sizes.items():
             with self.subTest(size=label):
                 created = []
-                original_init = uploadedfile.TemporaryUploadedFile.__init__
-
-                def spy_init(temp_file, *args, **kwargs):
-                    original_init(temp_file, *args, **kwargs)
-                    created.append(temp_file.temporary_file_path())
-
                 attached = SimpleUploadedFile(
                     "shot.png", os.urandom(size), content_type="image/png"
                 )
                 with tempfile.TemporaryDirectory() as temp_dir:
-                    with override_settings(FILE_UPLOAD_TEMP_DIR=temp_dir):
-                        with mock.patch.object(
-                            uploadedfile.TemporaryUploadedFile, "__init__", spy_init
-                        ):
-                            response = self.client.post(
-                                "/", {"text": JOB_TEXT, "image": attached}
-                            )
+                    with (
+                        override_settings(FILE_UPLOAD_TEMP_DIR=temp_dir),
+                        mock.patch.object(
+                            uploadedfile.TemporaryUploadedFile,
+                            "__init__",
+                            self._spy_on_temporary_files(created),
+                        ),
+                    ):
+                        response = self.client.post(
+                            "/", {"text": JOB_TEXT, "image": attached}
+                        )
 
                     self.assertEqual(
                         sorted(os.listdir(temp_dir)),
