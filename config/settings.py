@@ -20,72 +20,70 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 # 環境変数の読み込み
-env = environ.Env(
-    DEBUG=(bool,False)
-)
-environ.Env.read_env(BASE_DIR / '.env')
+env = environ.Env(DEBUG=(bool, False))
+environ.Env.read_env(BASE_DIR / ".env")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = env('SECRET_KEY')
+SECRET_KEY = env("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = env('DEBUG')
+DEBUG = env("DEBUG")
 
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[])
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
 
 
 # Application definition
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'apps.judge',
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "apps.judge",
 ]
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = 'config.urls'
+ROOT_URLCONF = "config.urls"
 
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
 ]
 
-WSGI_APPLICATION = 'config.wsgi.application'
+WSGI_APPLICATION = "config.wsgi.application"
 
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
     }
 }
 
@@ -95,7 +93,7 @@ DATABASES = {
 # 「入力内容をサーバー側に保存しない」という約束をディスク経由で崩さないため、
 # ハンドラをメモリのみに固定する。
 FILE_UPLOAD_HANDLERS = [
-    'django.core.files.uploadhandler.MemoryFileUploadHandler',
+    "django.core.files.uploadhandler.MemoryFileUploadHandler",
 ]
 # forms.MAX_IMAGE_SIZE（5MB）超の画像は form 側で拒否するが、その判定は
 # multipart のパース後に行われる。ここを form の上限より大きく取ることで、
@@ -105,47 +103,47 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024  # 6MB
 
 # LOGGING関係
 LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'standard': {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {
             # ログの出力形式（時刻、ログレベル、モジュール名、メッセージ）
-            'format': '[%(asctime)s] %(levelname)s [%(name)s:%(lineno)s] %(message)s',
+            "format": "[%(asctime)s] %(levelname)s [%(name)s:%(lineno)s] %(message)s",
         },
-        'usage': {
+        "usage": {
             # 使用量のログは、時刻をメッセージ側に持たせる。standard は秒まで
             # 出るため、ここでは付けない（判定した時刻から利用者をたどれる余地を
             # 残さないよう、時単位に丸めた値だけにする）。
-            'format': '%(message)s',
+            "format": "%(message)s",
         },
     },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'formatter': 'standard',
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
         },
         # トークン使用量は費用の把握に使うため、集計しやすいよう標準出力へ
         # 分けて出す（引数なしの StreamHandler は標準エラーになる）。
-        'usage_stdout': {
-            'class': 'logging.StreamHandler',
-            'stream': 'ext://sys.stdout',
-            'formatter': 'usage',
+        "usage_stdout": {
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",
+            "formatter": "usage",
         },
         # 必要に応じてファイル出力などもここに追加
     },
-    'loggers': {
+    "loggers": {
         # ここがポイント！ アプリ名を指定して共通ロガーを作成
-        'apps.judge': {
-            'handlers': ['console'],
-            'level': 'DEBUG',  # 開発時はDEBUGなどに変更
-            'propagate': False,
+        "apps.judge": {
+            "handlers": ["console"],
+            "level": "DEBUG",  # 開発時はDEBUGなどに変更
+            "propagate": False,
         },
         # トークン使用量。DB には保存せず、標準出力に1行ずつ出すだけにする。
         # 親（apps.judge）へは流さない（標準エラーに二重に出さないため）。
-        'apps.judge.usage': {
-            'handlers': ['usage_stdout'],
-            'level': 'INFO',
-            'propagate': False,
+        "apps.judge.usage": {
+            "handlers": ["usage_stdout"],
+            "level": "INFO",
+            "propagate": False,
         },
     },
 }
@@ -155,16 +153,16 @@ LOGGING = {
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
 
@@ -172,9 +170,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 
-LANGUAGE_CODE = 'ja-jp'
+LANGUAGE_CODE = "ja-jp"
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = "UTC"
 
 USE_I18N = True
 
@@ -183,19 +181,19 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = "static/"
 
 MESSAGE_TAGS = {
-    messages.ERROR: 'danger',  # error を danger にマッピング
+    messages.ERROR: "danger",  # error を danger にマッピング
 }
 
-VIEW_TEST_MODE = env.bool('VIEW_TEST_MODE', default=False)
+VIEW_TEST_MODE = env.bool("VIEW_TEST_MODE", default=False)
 
-CLAUDE_MODEL = env('CLAUDE_MODEL', default='claude-sonnet-5')
+CLAUDE_MODEL = env("CLAUDE_MODEL", default="claude-sonnet-5")
 
 # 1人あたり1日に判定できる件数。連打への摩擦で、ブラウザの Cookie で数える。
 # Cookie を消せば戻るため、費用の歯止めは下の SITE_DAILY_LIMIT 側に置いている。
-PERSON_DAILY_LIMIT = env.int('PERSON_DAILY_LIMIT', default=4)
+PERSON_DAILY_LIMIT = env.int("PERSON_DAILY_LIMIT", default=4)
 
 # サイト全体で1日に判定できる件数。月額の利用上限を1日で使い切られると
 # 翌月まで全員が判定を受けられなくなるため、被害をその日のうちに閉じ込める。
@@ -208,4 +206,9 @@ PERSON_DAILY_LIMIT = env.int('PERSON_DAILY_LIMIT', default=4)
 #
 # 実際のキャッシュ命中率は token_usage ログ（cache_read と cache_write）で
 # 測れる。運用して実測が取れたら、この値を見直す。
-SITE_DAILY_LIMIT = env.int('SITE_DAILY_LIMIT', default=11)
+SITE_DAILY_LIMIT = env.int("SITE_DAILY_LIMIT", default=11)
+
+# anthropic SDK の更新を検証するときだけ True にする（実 API を叩くため費用が出る）。
+# 引数の生存確認（AnthropicSDKSignatureTests）は常時実行で、ここには依存しない。
+ANTHROPIC_SDK_TEST = env.bool("ANTHROPIC_SDK_TEST", default=False)
+ANTHROPIC_SDK_TEST_MODEL = env("ANTHROPIC_SDK_TEST_MODEL", default="claude-haiku-4-5")
