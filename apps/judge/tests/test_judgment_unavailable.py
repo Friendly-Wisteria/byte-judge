@@ -15,8 +15,13 @@ from .. import forms, service, views
 from ..fixtures import FIXTURES
 from ..schema import RiskReportSchema
 from .helpers import (
-    FakeRequest, FakeResponse, JOB_TEXT, api_status_error,
-    assert_consultation_is_offered, billing_error, rate_limit_error,
+    JOB_TEXT,
+    FakeRequest,
+    FakeResponse,
+    api_status_error,
+    assert_consultation_is_offered,
+    billing_error,
+    rate_limit_error,
     schema_validation_error,
 )
 
