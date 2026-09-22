@@ -132,7 +132,7 @@ apps/judge/
 ├── quota.py          # 判定回数の上限（1人＝署名付きCookie / 全体＝日次カウンタ）
 ├── models.py         # DailyUsage（日付と件数だけの日次カウンタ）
 ├── fixtures.py       # VIEW_TEST_MODE 用の固定サンプル
-├── tests.py          # 「入力内容を残さない」ことなどの回帰テスト
+├── tests/            # 回帰テスト（守っている約束ごとに分割。全体像は tests/__init__.py）
 ├── templates/judge/
 │   ├── index.html
 │   └── prompts/job_offer_risk_assess.md   # 闇バイト判定プロンプト
@@ -151,7 +151,7 @@ config/               # Django プロジェクト設定
 
 > **注記：画像（スクリーンショット）入力は現在停止中です。**
 > UI を `apps/judge/templates/judge/index.html` で `{% comment %}` によりコメントアウトしています。
-> バックエンド（`forms.py` の画像検証、`views.py` の画像処理、`tests.py` の対応テスト）は
+> バックエンド（`forms.py` の画像検証、`views.py` の画像処理、`tests/` の対応テスト）は
 > そのまま残しており、運用方針次第で再開予定です。画像の制限値（最大 5MB / 約 33MP）も
 > コード上は有効なままです。
 
@@ -162,7 +162,7 @@ config/               # Django プロジェクト設定
 ### 本アプリのサーバー側に保存しないこと
 
 以下は、コードを読んだだけの説明ではなく、**自動テストで検証**しています
-（`apps/judge/tests.py`。GitHub Actions で毎回実行されます）。
+（`apps/judge/tests/`。GitHub Actions で毎回実行されます）。
 
 - **データベースに保存するのは、1日の判定件数だけです。** サイト全体の上限
   （既定 1日20件）を数えるため、`日付` と `件数` の 2 列だけを持つテーブルがあります
