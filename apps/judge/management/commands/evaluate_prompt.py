@@ -254,6 +254,9 @@ class Command(BaseCommand):
                     "label": o.label,
                     "score": o.score,
                     "has_enough_info": o.has_enough_info,
+                    "signal_text": o.signal_text,
+                    "summary": o.summary,
+                    "advice": o.advice,
                 }
                 for o in outcomes
             ],
