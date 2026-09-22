@@ -4,14 +4,16 @@
 実際にリクエストを通して外部に残る場所（ディスク / ログ / セッション）を検査する。
 """
 
+import base64
 import io
+import json
 import logging
 import math
 import os
 import pathlib
 import re
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest import mock, skip
 
 import anthropic
@@ -21,7 +23,12 @@ from django.core.files import uploadedfile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import Client, SimpleTestCase, TestCase, override_settings
+from django.db import IntegrityError, connection
+from django.http import HttpResponse
+from django.test import (
+    Client, RequestFactory, SimpleTestCase, TestCase, override_settings,
+)
+from django.test.utils import CaptureQueriesContext
 from PIL import Image
 
 from . import forms, quota, service, views
@@ -186,14 +193,73 @@ def schema_validation_error():
 
 
 class UploadNeverTouchesDiskTests(TestCase):
-    """アップロード画像がディスクに書き出されないことの検証。"""
+    """アップロードされたファイルがディスクに書き出されないことの検証。
 
-    def test_settings_exclude_the_temporary_file_handler(self):
-        # 一時ファイル書き出しハンドラが復活したら落ちる
-        self.assertNotIn(
-            "django.core.files.uploadhandler.TemporaryFileUploadHandler",
-            settings.FILE_UPLOAD_HANDLERS,
+    画像入力は停止中だが、multipart のパースはフォームより手前で走るため、
+    ファイルを添えて POST する経路自体は生きている（ハンドラ次第では
+    ディスクに書かれる）。約束は機能の停止とは独立に保つ必要があるので、
+    下の2件は画像の再開を待たずに常時実行する。残りは画像フィールドが
+    ある前提の検証なので、再開時まで眠らせる。
+    """
+
+    def test_only_the_memory_upload_handler_is_configured(self):
+        # 一時ファイル書き出しハンドラが復活したら落ちる。ハンドラが増えると
+        # ディスクに書く経路も戻り得るため、リストごと固定する。
+        self.assertEqual(
+            list(settings.FILE_UPLOAD_HANDLERS),
+            ["django.core.files.uploadhandler.MemoryFileUploadHandler"],
         )
+
+    @override_settings(VIEW_TEST_MODE=True)
+    def test_an_uploaded_file_leaves_nothing_on_disk(self):
+        """ファイルを添えて POST しても、一時ファイルが作られないこと。
+
+        「処理後に消えている」だけでは、一度ディスクに書いてから消す実装でも
+        通ってしまう。そもそも TemporaryUploadedFile が生成されないことも見る。
+
+        大きさは2通り試す。Django 既定の 2.5MB 超（ハンドラと
+        FILE_UPLOAD_MAX_MEMORY_SIZE を既定に戻すと書き出される大きさ）と、
+        こちらの上限超（ハンドラだけ既定に戻すと書き出される大きさ）。
+        中身は判定に渡らないので、PNG にせず乱数で大きさだけ作る。
+        """
+        sizes = {
+            "Django 既定の 2.5MB 超": 2621440 + 1,
+            "こちらの上限超": settings.FILE_UPLOAD_MAX_MEMORY_SIZE + 1,
+        }
+        for label, size in sizes.items():
+            with self.subTest(size=label):
+                created = []
+                original_init = uploadedfile.TemporaryUploadedFile.__init__
+
+                def spy_init(temp_file, *args, **kwargs):
+                    original_init(temp_file, *args, **kwargs)
+                    created.append(temp_file.temporary_file_path())
+
+                attached = SimpleUploadedFile(
+                    "shot.png", os.urandom(size), content_type="image/png"
+                )
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    with override_settings(FILE_UPLOAD_TEMP_DIR=temp_dir):
+                        with mock.patch.object(
+                            uploadedfile.TemporaryUploadedFile, "__init__", spy_init
+                        ):
+                            response = self.client.post(
+                                "/", {"text": JOB_TEXT, "image": attached}
+                            )
+
+                    self.assertEqual(
+                        sorted(os.listdir(temp_dir)),
+                        [],
+                        "リクエスト処理後も一時ディレクトリにファイルが残っている",
+                    )
+
+                # 添えたファイルは読み捨てられ、判定はテキストだけで通る
+                self.assertContains(response, "危険度")
+                self.assertEqual(
+                    created,
+                    [],
+                    "TemporaryUploadedFile が生成された＝入力が一度ディスクに書かれている",
+                )
 
     @skip(IMAGE_PAUSED)
     def test_memory_limit_stays_above_the_form_limit(self):
@@ -201,45 +267,6 @@ class UploadNeverTouchesDiskTests(TestCase):
         # 「画像サイズが大きすぎます」を返せなくなる
         self.assertGreater(
             settings.FILE_UPLOAD_MAX_MEMORY_SIZE, forms.MAX_IMAGE_SIZE
-        )
-
-    @skip(IMAGE_PAUSED)
-    @override_settings(VIEW_TEST_MODE=True)
-    def test_oversized_upload_leaves_no_file_on_disk(self):
-        """FILE_UPLOAD_MAX_MEMORY_SIZE 超の画像を POST しても一時ファイルが作られない。
-
-        「処理後に消えている」だけでは、一度ディスクに書いてから消す実装でも
-        通ってしまう。そもそも TemporaryUploadedFile が生成されないことも見る。
-        """
-        created = []
-        original_init = uploadedfile.TemporaryUploadedFile.__init__
-
-        def spy_init(temp_file, *args, **kwargs):
-            original_init(temp_file, *args, **kwargs)
-            created.append(temp_file.temporary_file_path())
-
-        png = png_at_least(settings.FILE_UPLOAD_MAX_MEMORY_SIZE + 1)
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with override_settings(FILE_UPLOAD_TEMP_DIR=temp_dir):
-                with mock.patch.object(
-                    uploadedfile.TemporaryUploadedFile, "__init__", spy_init
-                ):
-                    response = self.client.post(
-                        "/", {"mode": "image", "text": "", "image": upload(png)}
-                    )
-
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(
-                sorted(os.listdir(temp_dir)),
-                [],
-                "リクエスト処理後も一時ディレクトリにファイルが残っている",
-            )
-
-        self.assertEqual(
-            created,
-            [],
-            "TemporaryUploadedFile が生成された＝入力画像が一度ディスクに書かれている",
         )
 
     @skip(IMAGE_PAUSED)
@@ -1040,6 +1067,124 @@ class EvalMetricsTests(SimpleTestCase):
         self.assertEqual(evalset_metrics.Ratio(0, 0).format(), "対象なし")
 
 
+class EvalOutcomeKeepsTheWordingTests(SimpleTestCase):
+    """判定結果を評価用の Outcome に写す処理の検証。
+
+    指標に出ない品質（日本語の読みやすさ・口調）は、後から人が読むしかない。
+    そのために summary と advice を持たせているので、写し漏れがないことを
+    固定する。評価用テストセットは合成データで、利用者の入力ではない
+    （だから持ってよい）。
+    """
+
+    def _case(self, **kwargs):
+        return evalset_dataset.Case(
+            id=kwargs.get("id", "o1"),
+            category=kwargs.get("category", "obvious"),
+            text=kwargs.get("text", "日給5万円"),
+        )
+
+    def test_a_report_is_copied_with_its_wording(self):
+        report = RiskReportSchema.model_validate(FIXTURES["danger"])
+
+        outcome = evalset_metrics.outcome_from_report(self._case(), report)
+
+        self.assertEqual(outcome.case_id, "o1")
+        self.assertEqual(outcome.category, "obvious")
+        self.assertEqual(outcome.level, Level.DANGER)
+        self.assertEqual(outcome.label, "危険")
+        self.assertEqual(outcome.score, 88)
+        self.assertTrue(outcome.has_enough_info)
+        self.assertIsNone(outcome.error)
+        # 指標には出ないが、後から読み返すために持つ2つ
+        self.assertEqual(outcome.summary, report.summary)
+        self.assertEqual(outcome.advice, report.advice)
+
+    def test_every_signal_is_searchable_in_one_string(self):
+        """シグナルの名前と根拠が、照合できる形で1つにまとまること。"""
+        report = RiskReportSchema.model_validate(FIXTURES["danger"])
+
+        outcome = evalset_metrics.outcome_from_report(self._case(), report)
+
+        for signal in report.signals:
+            with self.subTest(signal=signal.name):
+                self.assertIn(signal.name, outcome.signal_text)
+                self.assertIn(signal.detail, outcome.signal_text)
+
+
+@override_settings(VIEW_TEST_MODE=False)
+class EvalJsonReportTests(TestCase):
+    """評価結果の JSON 書き出しの検証。
+
+    モデルやプロンプトを変えたときの比較は、この JSON を後から読み返して
+    行う（.reports/ に置く運用）。指標だけでなく判定の文面まで残す一方で、
+    テストセットの本文は書き出さない、という線引きをここで固定する。
+    """
+
+    def setUp(self):
+        directory = pathlib.Path(tempfile.mkdtemp())
+        self.cases_path = directory / "cases.toml"
+        self.cases_path.write_text(EvalCommandTests.CASES, encoding="utf-8")
+        self.json_path = directory / "result.json"
+        self.report = RiskReportSchema.model_validate(FIXTURES["danger"])
+
+    def _run(self):
+        out = io.StringIO()
+        with mock.patch.object(
+            evaluate_prompt.service, "job_offer_risk_assess", return_value=self.report
+        ):
+            call_command(
+                "evaluate_prompt",
+                cases=self.cases_path,
+                json=self.json_path,
+                yes=True,
+                stdout=out,
+            )
+        return json.loads(self.json_path.read_text(encoding="utf-8")), out.getvalue()
+
+    def test_the_json_holds_the_run_and_the_metrics(self):
+        payload, output = self._run()
+
+        self.assertEqual(payload["model"], settings.CLAUDE_MODEL)
+        self.assertEqual(payload["cases"], 3)
+        self.assertEqual(payload["runs"], 2 + evaluate_prompt.DEFAULT_GRAY_REPEAT)
+        # 危険側の1件を「危険」と判定できているので、見逃しは 0
+        self.assertEqual(payload["false_negative_rate"], 0.0)
+        self.assertEqual(payload["gray_label_agreement"], 1.0)
+        self.assertIn(str(self.json_path), output)
+
+    def test_each_outcome_keeps_the_model_wording(self):
+        """後から人が読み返せるよう、判定の文面まで残っていること。"""
+        payload, _ = self._run()
+
+        entry = payload["outcomes"][0]
+        self.assertEqual(
+            sorted(entry),
+            sorted([
+                "case_id", "category", "error", "level", "label", "score",
+                "has_enough_info", "signal_text", "summary", "advice",
+            ]),
+        )
+        self.assertEqual(entry["summary"], self.report.summary)
+        self.assertEqual(entry["advice"], self.report.advice)
+        self.assertIn("異常な高額報酬", entry["signal_text"])
+
+    def test_the_json_does_not_copy_the_case_text(self):
+        """テストセットの本文は書き出さないこと。
+
+        危険側は合成データだが、よくできているほど募集文のテンプレートとして
+        使えてしまうため、データ本体はリポジトリから外している
+        （apps/judge/evalset/README.md）。書き出し先に本文が写ると、その
+        判断が無意味になる。
+        """
+        self._run()
+        raw = self.json_path.read_text(encoding="utf-8")
+
+        for case in evalset_dataset.load_cases(self.cases_path):
+            with self.subTest(case=case.id):
+                self.assertNotIn(case.text, raw)
+                self.assertIn(case.id, raw)  # どのケースの結果かは辿れる
+
+
 class TokenUsageIsLoggedTests(TestCase):
     """トークン使用量が、標準出力にだけ残ることの検証。
 
@@ -1373,6 +1518,129 @@ class DailyQuotaTests(TestCase):
         self.assertEqual(Session.objects.count(), 0, "セッション行が作成されている")
 
 
+@override_settings(VIEW_TEST_MODE=True)
+class QuotaCookieIsVerifiedTests(TestCase):
+    """回数カウントの Cookie を書き換えたときの振る舞いの検証。
+
+    カウントはブラウザ側の署名付き Cookie だけで持っているため、署名を
+    検証していなければ上限そのものが意味を失う。一方で、壊れた Cookie で
+    利用者を締め出してもいけない（quota.py の方針どおり「枠が戻る」側に
+    倒す）。向きが逆の2つなので、どちらも固定しておく。
+
+    Cookie を消す・別のブラウザを使う経路は回避できる（README に明記の
+    とおり）。費用の歯止めは全体の枠側にあり、そちらは SiteDailyLimitTests
+    で見ている。
+    """
+
+    NOW = datetime(2026, 9, 22, 12, 0, tzinfo=quota.JST)
+    TODAY = "2026-09-22"
+
+    def _sign(self, raw):
+        """アプリと同じ経路で Cookie の値に署名する。
+
+        署名に使う salt の組み方は Django の内部仕様（6.1 で変わった）なので、
+        自分で組み立てず、公開 API に書かせた結果を借りる。
+        """
+        carrier = HttpResponse()
+        carrier.set_signed_cookie(quota.COOKIE_NAME, raw, salt=quota.COOKIE_SALT)
+        return carrier.cookies[quota.COOKIE_NAME].value
+
+    def _unsign(self, value):
+        """アプリと同じ経路で署名を検証し、中身を取り出す。"""
+        request = RequestFactory().post("/")
+        request.COOKIES[quota.COOKIE_NAME] = value
+        return request.get_signed_cookie(quota.COOKIE_NAME, salt=quota.COOKIE_SALT)
+
+    def _judge(self, client=None):
+        with mock.patch.object(quota, "_now_jst", return_value=self.NOW):
+            return (client or self.client).post("/", {"text": JOB_TEXT})
+
+    def test_a_correctly_signed_count_is_honoured(self):
+        """署名が合っていれば、その件数から数え始めること。"""
+        self.client.cookies[quota.COOKIE_NAME] = self._sign(
+            f"{self.TODAY}:{quota.person_limit() - 1}"
+        )
+
+        self.assertContains(self._judge(), "危険度")  # 残り1件
+        self.assertContains(self._judge(), "本日ぶんの判定")  # 使い切り
+
+    def test_a_tampered_count_is_not_honoured(self):
+        """署名を書き換えた件数は読まないこと。
+
+        読んでしまうと、件数を小さく書き換えるだけで上限が外れる。
+        検知したときは 0 として扱うので、枠は満額に戻る（締め出さない方針）。
+        """
+        signed = self._sign(f"{self.TODAY}:{quota.person_limit() - 1}")
+        self.client.cookies[quota.COOKIE_NAME] = signed[:-1] + (
+            "a" if signed[-1] != "a" else "b"
+        )
+
+        for i in range(quota.person_limit()):
+            with self.subTest(nth=i + 1):
+                self.assertContains(self._judge(), "危険度")
+        self.assertContains(self._judge(), "本日ぶんの判定")
+
+    def test_a_broken_cookie_never_locks_the_user_out(self):
+        """読めない Cookie でも 500 にせず、判定を通すこと。"""
+        broken = {
+            "空": "",
+            "署名のない平文": f"{self.TODAY}:0",
+            "でたらめな値": "garbage",
+            "件数が数値でない": self._sign(f"{self.TODAY}:abc"),
+            "件数が負": self._sign(f"{self.TODAY}:-5"),
+            "昨日の日付": self._sign(f"2026-09-21:{quota.person_limit()}"),
+        }
+        for label, value in broken.items():
+            with self.subTest(cookie=label):
+                client = Client()
+                client.cookies[quota.COOKIE_NAME] = value
+
+                self.assertContains(self._judge(client), "危険度")
+
+    def test_the_count_written_back_is_capped_at_the_limit(self):
+        """書き戻す件数は上限で止めること。"""
+        request = RequestFactory().post("/")
+        request.COOKIES[quota.COOKIE_NAME] = self._sign(f"{self.TODAY}:99")
+        response = HttpResponse()
+
+        with mock.patch.object(quota, "_now_jst", return_value=self.NOW):
+            quota.consume(request, response)
+
+        written = self._unsign(response.cookies[quota.COOKIE_NAME].value)
+        self.assertEqual(written, f"{self.TODAY}:{quota.person_limit()}")
+
+    def test_the_cookie_expires_at_the_next_jst_midnight(self):
+        """Cookie の寿命が翌0時までであること（日付をまたいで残らない）。"""
+        cases = [
+            ("23:59", datetime(2026, 9, 22, 23, 59, tzinfo=quota.JST), 60),
+            ("00:01", datetime(2026, 9, 22, 0, 1, tzinfo=quota.JST), 86340),
+        ]
+        for label, now, expected in cases:
+            with self.subTest(now=label):
+                client = Client()
+                with mock.patch.object(quota, "_now_jst", return_value=now):
+                    response = client.post("/", {"text": JOB_TEXT})
+
+                self.assertEqual(
+                    int(response.cookies[quota.COOKIE_NAME]["max-age"]), expected
+                )
+
+    def test_the_cookie_is_marked_secure_outside_debug(self):
+        """DEBUG=False（本番）では secure が付くこと。
+
+        ローカルは DEBUG=True で動かすため開発中は付かない。環境差で
+        見え方が変わらないよう、どちらの値もテスト側で固定する。
+        """
+        for debug, secure in [(False, True), (True, False)]:
+            with self.subTest(DEBUG=debug):
+                client = Client()
+                with override_settings(DEBUG=debug):
+                    response = self._judge(client)
+
+                cookie = response.cookies[quota.COOKIE_NAME]
+                self.assertEqual(bool(cookie["secure"]), secure)
+
+
 @override_settings(VIEW_TEST_MODE=False, SITE_DAILY_LIMIT=2)
 class SiteDailyLimitTests(TestCase):
     """サイト全体の1日の上限の検証。
@@ -1447,3 +1715,217 @@ class SiteDailyLimitTests(TestCase):
             sorted(f.name for f in DailyUsage._meta.fields), ["count", "date", "id"]
         )
         self.assertNotIn(MARKER, str(list(DailyUsage.objects.values())))
+
+
+@override_settings(SITE_DAILY_LIMIT=2)
+class SiteCounterHoldsUnderContentionTests(TestCase):
+    """全体の枠を数える処理が、競合と経年で崩れないことの検証。
+
+    ワーカーが複数ある本番では、read してから write する実装だと上限を
+    超えて通してしまう（費用の歯止めが外れる）。ただし実際の並行実行は
+    SQLite では再現できない（テーブルロックで1件しか通らず、実装を
+    入れ替えても緑になる）。そこで、上限の判定が SQL の条件に入っていること
+    自体を固定する。
+    """
+
+    NOW = datetime(2026, 9, 22, 12, 0, tzinfo=quota.JST)
+    TODAY = NOW.date()
+
+    def test_the_reservation_is_one_conditional_update(self):
+        quota.reserve_site_slot(self.NOW)  # 当日の行を作る
+
+        with CaptureQueriesContext(connection) as captured:
+            self.assertTrue(quota.reserve_site_slot(self.NOW))
+
+        updates = [
+            q["sql"]
+            for q in captured.captured_queries
+            if q["sql"].lstrip().upper().startswith("UPDATE")
+        ]
+        self.assertEqual(len(updates), 1, "確保が UPDATE 1文になっていない")
+        # 上限の判定が WHERE に入っていること（Python 側で読んで比べていない）
+        self.assertRegex(updates[0], rf'count"?\s*<\s*{settings.SITE_DAILY_LIMIT}')
+
+    def test_a_row_already_at_the_limit_is_not_incremented(self):
+        DailyUsage.objects.create(date=self.TODAY, count=settings.SITE_DAILY_LIMIT)
+
+        self.assertFalse(quota.reserve_site_slot(self.NOW))
+        self.assertEqual(DailyUsage.objects.get().count, settings.SITE_DAILY_LIMIT)
+
+    def test_a_row_created_by_another_worker_does_not_break_the_reservation(self):
+        """同時に行が作られて IntegrityError になっても、確保を続けること。"""
+        DailyUsage.objects.create(date=self.TODAY, count=0)
+
+        with mock.patch.object(
+            DailyUsage.objects, "get_or_create", side_effect=IntegrityError("race")
+        ):
+            self.assertTrue(quota.reserve_site_slot(self.NOW))
+
+        self.assertEqual(DailyUsage.objects.get().count, 1)
+
+    def test_rows_older_than_the_retention_window_are_deleted(self):
+        """古い行は、その日の最初の確保のときに消えること。"""
+        stale = self.TODAY - timedelta(days=quota.RETENTION_DAYS + 1)
+        kept = self.TODAY - timedelta(days=quota.RETENTION_DAYS - 1)
+        DailyUsage.objects.create(date=stale, count=1)
+        DailyUsage.objects.create(date=kept, count=1)
+
+        quota.reserve_site_slot(self.NOW)
+
+        self.assertEqual(
+            sorted(DailyUsage.objects.values_list("date", flat=True)),
+            [kept, self.TODAY],
+        )
+
+
+@override_settings(VIEW_TEST_MODE=False)
+class AssessmentFailuresAreClassifiedTests(TestCase):
+    """判定を返せない場合の、理由の振り分けの検証。
+
+    UNAVAILABLE と FAILED で画面の案内が変わる（前者は「サービス側の問題なので
+    文章を直しても解決しない」、後者は「もう一度お試しください」）。振り分けを
+    間違えると、直しても解消しない失敗に再試行を促すことになる。API 由来の
+    経路は ApiUnavailableIsGuidedToConsultationTests で見ているので、ここは
+    そこに載っていない経路を埋める。
+    """
+
+    def _parse(self):
+        """Claude API クライアントを差し替え、messages.parse のモックを返す。"""
+        patcher = mock.patch.object(service.anthropic, "Anthropic")
+        client_class = patcher.start()
+        self.addCleanup(patcher.stop)
+        return client_class.return_value.messages.parse
+
+    def test_a_non_text_input_is_rejected_without_calling_the_api(self):
+        """テキストでも画像でもない入力は、API に投げずに落とすこと。"""
+        parse = self._parse()
+
+        for value in (123, None, b"bytes", ["text"]):
+            with self.subTest(value=type(value).__name__):
+                self.assertIs(
+                    service.job_offer_risk_assess(value),
+                    service.AssessmentError.FAILED,
+                )
+        parse.assert_not_called()
+
+    def test_a_missing_prompt_file_is_reported_as_failed(self):
+        """判定プロンプトが読めないときは、API に投げずに落とすこと。
+
+        配置・設定の誤りなので、投げても費用だけが出る。
+        """
+        parse = self._parse()
+        missing = pathlib.Path(tempfile.mkdtemp()) / "nope.md"
+
+        with mock.patch.object(service, "PROMPT_PATH", missing):
+            result = service.job_offer_risk_assess(JOB_TEXT)
+
+        self.assertIs(result, service.AssessmentError.FAILED)
+        parse.assert_not_called()
+
+    def test_an_unknown_model_is_reported_as_unavailable(self):
+        """モデルIDの誤り（404）も、利用者から見れば「判定を受けられない」。"""
+        parse = self._parse()
+        parse.side_effect = anthropic.NotFoundError(
+            "model not found",
+            response=FakeResponse(404),
+            body={"error": {"type": "not_found_error", "message": "model not found"}},
+        )
+
+        self.assertIs(
+            service.job_offer_risk_assess(JOB_TEXT),
+            service.AssessmentError.UNAVAILABLE,
+        )
+
+    def test_a_truncated_response_is_reported_as_failed(self):
+        """max_tokens で切れた応答は、中身が取れても表示しないこと。"""
+        parse = self._parse()
+        # パースできる出力が付いていても、打ち切りの検出が優先されること
+        parse.return_value = mock.Mock(
+            stop_reason="max_tokens",
+            parsed_output=RiskReportSchema.model_validate(FIXTURES["danger"]),
+        )
+
+        self.assertIs(
+            service.job_offer_risk_assess(JOB_TEXT), service.AssessmentError.FAILED
+        )
+
+    def test_an_unparsable_response_is_reported_as_failed(self):
+        """構造化出力を取り出せなかった場合も、結果を表示しないこと。"""
+        parse = self._parse()
+        parse.return_value = mock.Mock(stop_reason="end_turn", parsed_output=None)
+
+        self.assertIs(
+            service.job_offer_risk_assess(JOB_TEXT), service.AssessmentError.FAILED
+        )
+
+
+@override_settings(VIEW_TEST_MODE=False)
+class ImageIsConvertedForTheApiTests(TestCase):
+    """画像を API に渡せる形に変換する処理の検証。
+
+    画像入力の UI とフォームは停止中だが、この変換は service 側に残してあり
+    （README のとおり再開予定）、フォームを通らずに呼べる。止めている間に
+    黙って壊れないよう、UI に依存しないこの部分は常時実行する。フォームの
+    画像フィールドが前提のテストは、@skip のまま眠らせておく。
+    """
+
+    def _sent_content(self, image):
+        with mock.patch.object(service.anthropic, "Anthropic") as client_class:
+            parse = client_class.return_value.messages.parse
+            parse.return_value = mock.Mock(stop_reason="end_turn")
+            service.job_offer_risk_assess(image)
+        return parse.call_args.kwargs["messages"][0]["content"]
+
+    def _decode(self, block):
+        data = base64.standard_b64decode(block["source"]["data"])
+        return Image.open(io.BytesIO(data))
+
+    def test_an_image_is_sent_as_an_inline_png_block(self):
+        block, caption = self._sent_content(Image.new("RGB", (20, 10), "red"))
+
+        self.assertEqual(block["type"], "image")
+        self.assertEqual(block["source"]["type"], "base64")
+        self.assertEqual(block["source"]["media_type"], "image/png")
+        self.assertEqual(self._decode(block).format, "PNG")
+        self.assertEqual(caption["text"], "# 評価対象の求人")
+
+    def test_a_long_edge_beyond_the_limit_is_scaled_down(self):
+        """API 側で自動縮小される大きさに、送る前に合わせること。"""
+        limit = service.MAX_IMAGE_LONG_EDGE
+        cases = {
+            "上限超": ((limit * 2, limit), (limit, limit // 2)),
+            "上限内": ((limit - 100, 10), (limit - 100, 10)),
+        }
+        for label, (size, expected) in cases.items():
+            with self.subTest(size=label):
+                content = self._sent_content(Image.new("RGB", size, "red"))
+
+                self.assertEqual(self._decode(content[0]).size, expected)
+
+    def test_a_mode_png_cannot_hold_is_converted(self):
+        """PNG で保存できないモード（CMYK 等）でも送れること。"""
+        content = self._sent_content(Image.new("CMYK", (20, 10)))
+
+        self.assertEqual(self._decode(content[0]).mode, "RGB")
+
+    def test_an_exif_rotation_is_applied(self):
+        """横倒しのまま送らないこと（読み取り精度が落ちるため）。"""
+        exif = Image.Exif()
+        exif[274] = 6  # Orientation: 90度回転
+        buffer = io.BytesIO()
+        Image.new("RGB", (40, 20), "red").save(buffer, format="JPEG", exif=exif)
+
+        content = self._sent_content(Image.open(io.BytesIO(buffer.getvalue())))
+
+        self.assertEqual(self._decode(content[0]).size, (20, 40))
+
+    def test_a_conversion_failure_is_reported_as_failed(self):
+        """変換で例外が出ても、500 にせず判定不可として返すこと。"""
+        with mock.patch.object(
+            service, "_pil_to_image_block", side_effect=OSError("broken")
+        ):
+            with mock.patch.object(service.anthropic, "Anthropic") as client_class:
+                result = service.job_offer_risk_assess(Image.new("RGB", (10, 10)))
+
+        self.assertIs(result, service.AssessmentError.FAILED)
+        client_class.return_value.messages.parse.assert_not_called()
