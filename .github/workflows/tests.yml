@@ -39,6 +39,6 @@ jobs:
       - name: Set up Python
         run: uv python install 3.13
 
-      # 「入力内容をサーバー側に残さない」ことの回帰テスト（apps/judge/tests.py）を含む
+      # 「入力内容をサーバー側に残さない」ことの回帰テスト（apps/judge/tests/）を含む
       - name: Run Django tests
         run: uv run python manage.py test --verbosity 2
