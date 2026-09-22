@@ -29,6 +29,10 @@ class Outcome:
     has_enough_info: bool | None = None
     # シグナルの name と detail を連結したもの（根拠の照合に使う）
     signal_text: str = ""
+    # 指標に出ない品質（日本語の読みやすさ・口調）を後から人が読むために持つ。
+    # 評価用テストセットは合成データで、利用者の入力ではない。
+    summary: str = ""
+    advice: str = ""
 
     @property
     def judged(self) -> bool:
@@ -52,6 +56,8 @@ def outcome_from_report(case: Case, report) -> Outcome:
         score=report.score,
         has_enough_info=report.has_enough_info,
         signal_text=signal_text,
+        summary=report.summary,
+        advice=report.advice,
     )
 
 
