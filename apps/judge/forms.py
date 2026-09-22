@@ -1,7 +1,7 @@
 from django import forms
 
 # 画像（スクリーンショット）入力は停止中。
-# 以下の定数は再開時にそのまま使えるよう残している（apps/judge/tests.py の
+# 以下の定数は再開時にそのまま使えるよう残している（apps/judge/tests/ の
 # @skip 済みテストが参照する）。停止の経緯は README を参照。
 # なお service.py 側の画像処理は、到達しなくなるが残置している。
 MAX_IMAGE_SIZE = 5 * 1024 * 1024   # 5MB
