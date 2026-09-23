@@ -43,12 +43,13 @@
 | 領域 | 使用技術 |
 |---|---|
 | 言語 | Python 3.13 |
-| フレームワーク | Django 6.0 |
+| フレームワーク | Django 6.1 |
 | LLM | Anthropic Claude（`anthropic`） |
 | バリデーション | Pydantic 2 |
 | 画像処理 | Pillow |
 | 設定管理 | django-environ（`.env`） |
-| データベース | 開発は SQLite / 本番は未定（第一候補 PostgreSQL）。保存するのは1日の判定件数のみ |
+| データベース | 開発は SQLite / 本番は PostgreSQL（Neon）。保存するのは1日の判定件数のみ |
+| 実行環境 | 開発は `runserver` / 本番は gunicorn（Google Cloud Run） |
 | フロントエンド | Django テンプレート + Bootstrap |
 | パッケージ管理 | uv |
 
@@ -282,16 +283,74 @@ ALLOWED_HOSTS=example.com,www.example.com
 サーバーではこのチェックが走りません。**設定漏れに気づくのがデプロイ後の
 最初のリクエストになるため、起動前に必ず確認してください。
 
-### 3. その他
+### 3. データベースを設定する（`DATABASE_URL`）
+
+本番のデータベースは PostgreSQL です。環境変数 `DATABASE_URL` を設定すると
+その接続先を使い、未設定のときは開発用の SQLite にフォールバックします。
+
+```dotenv
+DATABASE_URL=postgresql://<user>:<password>@<host>/<dbname>?sslmode=require
+```
+
+⚠️ **永続ディスクの無い環境（Cloud Run など）で設定が漏れると、上限の歯止めが
+効かなくなります。** `DailyUsage` がインスタンスごと・再起動ごとに分かれ、
+`SITE_DAILY_LIMIT` が意味を成さなくなるためです。
+
+- 保存するのは `DailyUsage`（日付と件数）だけなので、移行の負担はありません。
+- SQLite は書き込み時にデータベース全体をロックするため、gunicorn などで
+  ワーカーを複数立てる構成では、書き込みの競合で待ちやエラーが出ます。サイト
+  全体の枠の確保は条件付き UPDATE 1文で行っており（`apps/judge/quota.py` の
+  `reserve_site_slot`）、PostgreSQL ならこの1文がそのまま上限の保証になります。
+- 接続の使い回し（`CONN_MAX_AGE`）は既定の 0（リクエストごとに接続）のままに
+  しています。サーバーレス Postgres は無通信が続くとサスペンドし、使い回した
+  接続が切れている可能性があること、1リクエストあたりの DB 操作が1行だけで、
+  判定そのものにかかる時間に比べれば接続の往復が無視できることによります。
+- 接続プーラー（PgBouncer など）を挟む場合も、追加の設定は要りません。Django は
+  psycopg 3 のプリペアドステートメントを既定で無効にしています。
+- **手元での注意**：`.env` に `DATABASE_URL` を書いたままにすると、
+  `manage.py test` がリモートのデータベースにテスト用 DB を作りに行きます。
+  普段はコメントアウトし、マイグレーションなど必要なときだけ有効にしてください。
+
+### 4. HTTPS まわりを確認する
+
+前段（ロードバランサや PaaS）が TLS を終端し、アプリには平文の HTTP で渡る
+構成を前提にしています。`DEBUG=False` のとき、次の設定が有効になります。
+
+| 設定 | 値 | 役割 |
+| --- | --- | --- |
+| `SECURE_PROXY_SSL_HEADER` | `X-Forwarded-Proto` を見る | 前段が HTTPS で終端した印を信用する |
+| `SECURE_SSL_REDIRECT` | `True` | HTTP で来た接続を HTTPS へ飛ばす |
+| `SESSION_COOKIE_SECURE` / `CSRF_COOKIE_SECURE` | `True` | Cookie を HTTPS 限定にする |
+| `SECURE_HSTS_SECONDS` | `300` | 5分。運用が安定してから伸ばす |
+
+⚠️ **前段を通さずにアプリへ直接到達できる経路がある構成では、この前提が崩れます。**
+`X-Forwarded-Proto: https` を付けるだけで HTTPS だと誤認させられるためです。
+その場合は `config/settings.py` の `SECURE_PROXY_SSL_HEADER` を外してください。
+
+`SECURE_SSL_REDIRECT` だけは環境変数で無効にできます（`SECURE_SSL_REDIRECT=False`）。
+テストは平文のクライアントで走るため CI ではこれを使っており、本番でリダイレクトが
+ループしたときに、イメージを作り直さず環境変数だけで戻せる余地も兼ねています。
+
+デプロイ後に、次の3つを確認してください。
+
+```bash
+curl -sI https://<ドメイン>/     # 200 であること。301 ならリダイレクトループ
+curl -sI https://<ドメイン>/ | grep -i strict-transport   # HSTS が付くこと
+```
+
+加えて、画面から実際に判定を1件送り、**POST が 403 にならないこと**を確認します。
+403（CSRF の Origin チェック失敗）は、ブラウザが `https` で送っているのに Django が
+自分を `http` だと思っている、つまり `SECURE_PROXY_SSL_HEADER` が効いていない
+状態を示します。
+
+HSTS の `includeSubDomains` と `preload` は、どちらも取り消しが効きにくいため
+まだ有効にしていません（`manage.py check --deploy` の `W005` / `W021` は、この
+判断の結果として残しているものです）。
+
+### 5. その他
 
 - `SECRET_KEY` は本番専用の値を新しく生成してください。開発用の値を
   流用しないでください。
-- **本番のデータベースは未定です（第一候補は PostgreSQL）。** 保存するのは
-  `DailyUsage`（日付と件数）だけなので移行の負担はありませんが、SQLite は
-  書き込み時にデータベース全体をロックするため、gunicorn などでワーカーを
-  複数立てる構成では、書き込みの競合で待ちやエラーが出ます。サイト全体の枠の
-  確保は条件付き UPDATE 1文で行っており（`apps/judge/quota.py` の
-  `reserve_site_slot`）、PostgreSQL ならこの1文がそのまま上限の保証になります。
 - 判定結果ページは `Cache-Control: no-store` を返します。前段にリバースプロキシや
   CDN を置く場合は、このヘッダが打ち消されたり無視されたりしない設定になっているか
   ご確認ください（「データの取り扱い」の「本アプリでは防ぎきれないこと」を参照）。
@@ -299,6 +358,103 @@ ALLOWED_HOSTS=example.com,www.example.com
   - `INSTALLED_APPS`の `"django.contrib.auth"` / `"django.contrib.contenttypes"`
   - `"django.contrib.auth.middleware.AuthenticationMiddleware"`
   - `"django.contrib.auth.context_processors.auth"`
+
+---
+
+## Google Cloud Run + Neon へのデプロイ
+
+公開はこの構成で行っています。永続ディスクを持たない代わりに、使われていない
+あいだの費用がほぼ出ない組み合わせです。他の PaaS へ移す場合も、上の
+「本番環境にデプロイする場合の必須設定」を満たせば同じように動きます。
+
+### 1. Neon（PostgreSQL）
+
+プロジェクトを作成し、接続文字列を2本控えます。ダッシュボードの
+Connection string で Connection pooling を切り替えると、両方が得られます。
+
+- **プーリング用**（ホスト名に `-pooler` が入るほう）… アプリが使う
+- **直接接続用**… マイグレーションで使う
+
+### 2. Google Cloud の準備
+
+```bash
+gcloud projects create <PROJECT_ID> --name="byte-judge"
+gcloud config set project <PROJECT_ID>
+
+# 課金アカウントの紐づけ（Cloud Build / Cloud Run に必要）
+gcloud billing accounts list
+gcloud billing projects link <PROJECT_ID> --billing-account=<ACCOUNT_ID>
+
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com secretmanager.googleapis.com
+gcloud config set run/region asia-northeast1
+```
+
+### 3. シークレットの登録
+
+`SECRET_KEY` / `ANTHROPIC_API_KEY` / `DATABASE_URL`（プーリング用のほう）を
+Secret Manager に置きます。環境変数に直接書くと、サービスの設定を読める人が
+そのまま値を見られるためです。
+
+```bash
+printf '%s' '<値>' | gcloud secrets create SECRET_KEY --data-file=-
+```
+
+⚠️ **`echo` を使わないでください。** 末尾の改行まで値の一部として保存され、
+接続文字列やキーが壊れます（`printf '%s'` か、改行を付けないファイルを使う）。
+
+登録したら、実行するサービスアカウントに読み取りを許可します。
+
+```bash
+gcloud secrets add-iam-policy-binding SECRET_KEY \
+  --member="serviceAccount:<PROJECT_NUMBER>-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+```
+
+### 4. マイグレーション
+
+Cloud Run 側から流す仕組みは用意していません。**直接接続用**の文字列を使って、
+手元から1回実行します。
+
+```bash
+DATABASE_URL='<直接接続用の文字列>' uv run python manage.py migrate
+```
+
+### 5. デプロイ
+
+`--source .` を指定すると、ビルドは Cloud Build 側で走ります（手元に Docker は
+不要です）。`ALLOWED_HOSTS` に入れる URL は
+`<サービス名>-<プロジェクト番号>.<リージョン>.run.app` の形になります。
+
+```bash
+gcloud run deploy byte-judge --source . --region asia-northeast1 \
+  --allow-unauthenticated \
+  --memory 512Mi --cpu 1 --concurrency 8 --min-instances 0 --timeout 600 \
+  --set-env-vars "ALLOWED_HOSTS=<サービスの URL>" \
+  --set-secrets "SECRET_KEY=SECRET_KEY:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,DATABASE_URL=DATABASE_URL:latest"
+```
+
+`DEBUG` は渡しません（未設定＝`False`）。2回目以降は、環境変数とシークレットの
+指定を省略できます（前のリビジョンから引き継がれます）。
+
+設定値の対応関係は次のとおりです。
+
+| Cloud Run | 対応するもの |
+| --- | --- |
+| `--concurrency 8` | `Dockerfile` の gunicorn `--threads 8` と揃える |
+| `--timeout 600` | 打ち切りの判断はここに一本化（gunicorn 側は `--timeout 0`） |
+| `--min-instances 0` | 使われていないあいだは費用が出ない。初回アクセスは5秒ほどかかる |
+
+### 6. 確認
+
+```bash
+gcloud run services logs read byte-judge --region asia-northeast1 --limit 20
+```
+
+起動ログにエラーが無いこと、判定を1件送って `token_usage` の行が出ること、
+`DailyUsage` に行が増えることを確認します。費用の見積もりに使う
+プロンプトキャッシュの命中率も、この `token_usage` ログ（`cache_read` と
+`cache_write`）で測れます。
 
 ---
 
