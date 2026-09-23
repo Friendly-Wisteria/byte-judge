@@ -1,6 +1,18 @@
 from enum import StrEnum
+from typing import Annotated
 
-from pydantic import BaseModel, Field, computed_field, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    StringConstraints,
+    computed_field,
+    model_validator,
+)
+
+# 画面の主役になる文字列。min_length は文字数しか見ないため、空白だけの
+# 文字列（" " や改行）は長さ1として通ってしまう。前後の空白を取り除いてから
+# 長さを見ることで、画面に空の枠が出る状態を弾く。
+NonBlankText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 class Level(StrEnum):
@@ -72,9 +84,9 @@ class Signal(BaseModel):
 class RiskReportSchema(BaseModel):
     score: int = Field(ge=0, le=100, description="危険度 0〜100")
     level: Level = Field(description="総合判定ラベル")
-    summary: str = Field(min_length=1, description="総合判断を1〜2文で")
+    summary: NonBlankText = Field(description="総合判断を1〜2文で")
     signals: list[Signal] = Field(default_factory=list, description="検出シグナル")
-    advice: str = Field(min_length=1, description="推奨アクションを1〜2文で")
+    advice: NonBlankText = Field(description="推奨アクションを1〜2文で")
     has_enough_info: bool = Field(
         description="闇バイトかどうかを判断できるだけの情報が、与えられたテキストに含まれていたか"
     )

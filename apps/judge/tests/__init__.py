@@ -9,6 +9,7 @@
 - test_prompt_injection.py      求人テキストが囲みタグの境界を偽装できないこと
 - test_image_input.py           画像の受け口が閉じていること・API に渡す変換
 - test_result_display.py        情報不足の扱いと、「安全」と言い切らない表示
+- test_schema_values.py         判定JSONの値域と、見本が画面まで通ること
 - test_judgment_unavailable.py  判定を返せないときの振り分けと、相談先の案内
 - test_view_test_mode.py        配線テストモードの結果を、本物と誤認させないこと
 - test_oversized_request.py     リクエストが上限を超えたときの見え方
