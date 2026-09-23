@@ -135,6 +135,59 @@ class EvalMetricsTests(SimpleTestCase):
         """分母が0のときに 0% と出すと、良い成績と読めてしまう。"""
         self.assertEqual(evalset_metrics.Ratio(0, 0).format(), "対象なし")
 
+    # ---- 参考値の指標（モデルを変えるときの比較材料になる） --------------
+
+    def test_an_obvious_case_left_at_caution_is_counted_as_underrated(self):
+        result = evalset_metrics.underrated_obvious([
+            self._make_outcome("obvious", level=Level.CAUTION),
+            self._make_outcome("obvious", level=Level.DANGER, case_id="c2"),
+        ])
+
+        self.assertEqual((result.count, result.total), (1, 2))
+
+    def test_only_obvious_cases_count_as_underrated(self):
+        """disguised は要注意が妥当なこともあるので、分母に入れない。"""
+        result = evalset_metrics.underrated_obvious([
+            self._make_outcome("disguised", level=Level.CAUTION),
+        ])
+
+        self.assertEqual(result.total, 0)
+        self.assertIsNone(result.rate)
+
+    def test_an_obvious_case_without_enough_info_is_not_underrated(self):
+        """情報不足は見逃しに数えるので、参考値の側で二重に数えない。"""
+        result = evalset_metrics.underrated_obvious([
+            self._make_outcome("obvious", level=Level.CAUTION, enough=False),
+        ])
+
+        self.assertEqual((result.count, result.total), (0, 1))
+
+    def test_a_legitimate_case_judged_dangerous_is_a_false_positive(self):
+        result = evalset_metrics.false_positive([
+            self._make_outcome("legitimate", level=Level.DANGER),
+            self._make_outcome("legitimate", level=Level.CAUTION, case_id="c2"),
+        ])
+
+        self.assertEqual((result.count, result.total), (1, 2))
+
+    def test_only_legitimate_cases_count_as_false_positives(self):
+        """グレーを危険と判定しても、偽陽性とは言えない。"""
+        result = evalset_metrics.false_positive([
+            self._make_outcome("gray", level=Level.DANGER),
+        ])
+
+        self.assertEqual(result.total, 0)
+
+    def test_errors_are_excluded_from_the_reference_metrics(self):
+        """判定を受け取れなかった回は、どちらの分母にも入れない。"""
+        errored = [
+            self._make_outcome("obvious", error="UNAVAILABLE"),
+            self._make_outcome("legitimate", error="UNAVAILABLE", case_id="c2"),
+        ]
+
+        self.assertEqual(evalset_metrics.underrated_obvious(errored).total, 0)
+        self.assertEqual(evalset_metrics.false_positive(errored).total, 0)
+
 
 class EvalOutcomeKeepsTheWordingTests(SimpleTestCase):
     """判定結果を評価用の Outcome に写す処理の検証。
