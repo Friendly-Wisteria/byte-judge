@@ -1,0 +1,94 @@
+<!doctype html>
+{% comment %}
+  全ページの骨組み。head・ナビ・フッターをここに集約し、各ページは
+  content ブロックだけを書く。
+
+  ブロック:
+    title       ... <title> の中身
+    extra_head  ... ページ固有の <style> など
+    body_start  ... コンテナより前に置く要素（判定中のオーバーレイなど）
+    col         ... 本文カラムの幅。既定は col-lg-7
+    content     ... 本文
+    scripts     ... ページ固有の <script>
+
+  ナビとフッターのポリシーへのリンクは {% templatetag openblock %} url 'judge:privacy' {% templatetag closeblock %} を使うため、
+  urls.py に name="privacy" が必要。
+{% endcomment %}
+<html lang="ja">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>{% block title %}バイトジャッジ - そのバイト、闇バイトかも?{% endblock %}</title>
+        <!-- 白背景の Flatly。危険の赤（#e74c3c）が背景に埋もれないテーマを選んでいる。
+             不安な状態で訪れる利用者に緊張感を与えないよう、警告色は判定結果と
+             危険シグナルにだけ使い、地の画面は白と紺で構成する。 -->
+        <link rel="stylesheet"
+              href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.8/dist/flatly/bootstrap.min.css"
+              integrity="sha384-MZ3pnZEBOL1wAG2nrP+M1A9LCApF229c39UC+1T3B96aI3VjuAWMeb1I99GMJacE"
+              crossorigin="anonymous">
+        <style>
+            /* Flatly は .alert を「塗りつぶし＋白文字」にするため、白背景では
+               コントラストが 4.5 を下回る（情報不足の案内で 2.56、危険で 3.82）。
+               判定できない理由や次に取る行動を伝える文章なので、塗りは残した
+               まま文字色を濃くする。差し替え前の Vapor は濃色文字で 4.51 あり、
+               これはテーマ変更による後退なので元の水準に戻す。 */
+            .alert,
+            .alert a,
+            .alert .alert-link {
+                color: var(--bs-emphasis-color);
+            }
+        </style>
+        {% block extra_head %}{% endblock %}
+    </head>
+    {% comment %}
+      本文が短いページでもフッターが画面下に収まるよう、body を縦の flex に
+      して、フッターに mt-auto を持たせる。
+    {% endcomment %}
+    <body class="d-flex flex-column min-vh-100 bg-body-tertiary">
+        {% block body_start %}{% endblock %}
+        {% comment %}
+          判定を急いでいる利用者の視線を奪わないよう、項目はサービス名に絞る。
+        {% endcomment %}
+        <nav class="navbar navbar-expand bg-primary" data-bs-theme="dark">
+            <div class="container">
+                <a class="navbar-brand fw-bold" href="{% url 'judge:index' %}">
+                    バイトジャッジ
+                </a>
+
+            </div>
+        </nav>
+        <main class="container my-4">
+            <div class="row justify-content-center">
+                {% comment %}
+                  余白（body の bg-secondary）と本文を分けるため、本文カラムだけ
+                  地の色に戻す。data-notice（--bs-tertiary-bg）や dataflow-node
+                  （--bs-body-bg）は白を前提に濃淡を決めているため、ここを bg-light に
+                  すると明暗が逆転する。
+                {% endcomment %}
+                <div class="col-12 col-md-10 {% block col %}col-lg-7{% endblock %} py-4 px-3 px-md-4 bg-body border rounded shadow-sm">
+                    {% block content %}{% endblock %}
+                </div>
+            </div>
+        </main>
+        {% comment %}
+          判定結果の下にある注意書き（AIの目安であること・相談先）とは役割を
+          分ける。ここはどのページからでもポリシーに行けるようにするための帯で、
+          同じ文言は繰り返さない。
+        {% endcomment %}
+        <footer class="border-top mt-auto py-4 bg-primary text-light">
+            <div class="container d-flex flex-wrap justify-content-center">
+                <p class="h6 mb-0">
+                    バイトジャッジ — 闇バイトの疑いを AI がチェック
+                </p>
+            </div>
+            <div class="container d-flex flex-wrap justify-content-center gap-4 mt-2">
+                <small>&copy; 2026 Project Byte Judge</small>
+                <small>|</small>
+                <small>
+                    <a class="link-light" href="{% url 'judge:privacy' %}">プライバシーポリシー</a>
+                </small>
+            </div>
+        </footer>
+        {% block scripts %}{% endblock %}
+    </body>
+</html>
