@@ -98,3 +98,49 @@ text = "   "
 
         with self.assertRaisesMessage(evalset_dataset.DatasetError, "README"):
             evalset_dataset.load_cases(missing)
+
+    def test_a_broken_toml_points_at_the_file(self):
+        """TOML として壊れている場合、どのファイルかが分かること。"""
+        path = self._write('[[case]\nid = "x"\n')
+
+        with self.assertRaisesMessage(evalset_dataset.DatasetError, "TOML"):
+            evalset_dataset.load_cases(path)
+
+    def test_a_file_without_any_case_is_rejected(self):
+        """読めるが中身が無い場合も、実行に進ませないこと。"""
+        path = self._write("# 見出しだけで case が無い\n")
+
+        with self.assertRaisesMessage(
+            evalset_dataset.DatasetError, "case が1件もありません"
+        ):
+            evalset_dataset.load_cases(path)
+
+
+class EvalCompositionTests(SimpleTestCase):
+    """テストセットの構成表示の検証。
+
+    件数の偏りは読み込み側では弾いていない（カテゴリを絞って試すことがある
+    ため）。実行前に構成を見せることだけが、偏ったまま測って結論を出すのを
+    防いでいる。
+    """
+
+    def _cases(self, *categories):
+        return [
+            evalset_dataset.Case(id=f"c{i}", category=category, text="t")
+            for i, category in enumerate(categories, start=1)
+        ]
+
+    def test_it_counts_each_category(self):
+        composition = evalset_dataset.composition(
+            self._cases("obvious", "obvious", "gray")
+        )
+
+        self.assertEqual(composition["obvious"], 2)
+        self.assertEqual(composition["gray"], 1)
+
+    def test_every_category_is_present_even_with_no_case(self):
+        """0件のカテゴリも鍵として返すこと（呼び出し側が有無を判断できる）。"""
+        composition = evalset_dataset.composition(self._cases("obvious"))
+
+        self.assertEqual(composition["disguised"], 0)
+        self.assertEqual(sorted(composition), sorted(evalset_dataset.CATEGORIES))

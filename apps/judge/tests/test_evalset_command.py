@@ -6,6 +6,7 @@
 import io
 import json
 import pathlib
+import re
 import tempfile
 from unittest import mock
 
@@ -19,7 +20,7 @@ from ..evalset import dataset as evalset_dataset
 from ..fixtures import FIXTURES
 from ..management.commands import evaluate_prompt
 from ..schema import RiskReportSchema
-from .helpers import EVAL_CASES_TOML
+from .helpers import EVAL_CASES_TOML, eval_cases_toml
 
 
 class EvalCommandTests(TestCase):
@@ -177,3 +178,150 @@ class EvalJsonReportTests(TestCase):
             with self.subTest(case=case.id):
                 self.assertNotIn(case.text, raw)
                 self.assertIn(case.id, raw)  # どのケースの結果かは辿れる
+
+
+@override_settings(VIEW_TEST_MODE=False)
+class RunSizeMatchesThePlanTests(TestCase):
+    """実行回数の見積もりと、実際に API を叩く回数が一致することの検証。
+
+    評価は実行のたびに費用が出るため、測り直しが効かない。画面に出た回数と
+    実際の回数がずれると、費用の判断も、どれだけの母数で読むべきかも狂う。
+    """
+
+    def setUp(self):
+        self.directory = pathlib.Path(tempfile.mkdtemp())
+        self.report = RiskReportSchema.model_validate(FIXTURES["danger"])
+
+    def _write(self, **counts):
+        path = self.directory / "cases.toml"
+        path.write_text(eval_cases_toml(**counts), encoding="utf-8")
+        return path
+
+    def _run(self, path, **options):
+        out = io.StringIO()
+        with mock.patch.object(
+            evaluate_prompt.service, "job_offer_risk_assess", return_value=self.report
+        ) as api:
+            call_command("evaluate_prompt", cases=path, yes=True, stdout=out, **options)
+        return api.call_count, out.getvalue()
+
+    def _planned_runs(self, output):
+        """画面に出た「判定の実行回数」を読み取る。"""
+        found = re.search(r"判定の実行回数 (\d+)", output)
+        self.assertIsNotNone(found, output)
+        return int(found.group(1))
+
+    def test_limit_caps_each_category(self):
+        path = self._write(obvious=3, legitimate=3, gray=3)
+
+        calls, output = self._run(path, limit=2)
+
+        # 各カテゴリ2件まで。グレーだけ既定で繰り返す
+        self.assertEqual(calls, 2 + 2 + 2 * evaluate_prompt.DEFAULT_GRAY_REPEAT)
+        self.assertEqual(self._planned_runs(output), calls)
+
+    def test_repeat_applies_to_every_category(self):
+        path = self._write(obvious=1, legitimate=1, gray=1)
+
+        calls, output = self._run(path, repeat=2)
+
+        self.assertEqual(calls, 3 * 2)
+        self.assertEqual(self._planned_runs(output), calls)
+
+    def test_repeat_replaces_the_gray_default(self):
+        """--repeat を渡したら、グレーもその回数になること（既定に戻らない）。"""
+        path = self._write(gray=1)
+
+        calls, _ = self._run(path, repeat=2)
+
+        self.assertEqual(calls, 2)
+        self.assertNotEqual(calls, evaluate_prompt.DEFAULT_GRAY_REPEAT)
+
+    def test_the_estimate_matches_the_run_for_every_combination(self):
+        """--dry-run で見た回数のまま実行されること。
+
+        見積もりを見て実行を決めるので、ここがずれると判断の前提が崩れる。
+        """
+        path = self._write(obvious=3, disguised=2, legitimate=3, gray=2)
+        combinations = (
+            {},
+            {"limit": 1},
+            {"repeat": 2},
+            {"category": ["gray"]},
+            {"category": ["obvious", "gray"], "limit": 2, "repeat": 3},
+        )
+        for options in combinations:
+            with self.subTest(options=options):
+                _, planned = self._run(path, dry_run=True, **options)
+                calls, _ = self._run(path, **options)
+
+                self.assertEqual(calls, self._planned_runs(planned))
+
+
+@override_settings(VIEW_TEST_MODE=False)
+class SpendingNeedsConfirmationTests(TestCase):
+    """実行前の確認の検証。
+
+    ここで止まらないと、意図しない実行の費用がそのまま出る。
+    """
+
+    def setUp(self):
+        self.path = pathlib.Path(tempfile.mkdtemp()) / "cases.toml"
+        self.path.write_text(EVAL_CASES_TOML, encoding="utf-8")
+        self.report = RiskReportSchema.model_validate(FIXTURES["danger"])
+
+    def _run_with_answer(self, answer, **options):
+        out = io.StringIO()
+        with (
+            mock.patch.object(
+                evaluate_prompt.service,
+                "job_offer_risk_assess",
+                return_value=self.report,
+            ) as api,
+            mock.patch("builtins.input", return_value=answer) as prompt,
+        ):
+            call_command("evaluate_prompt", cases=self.path, stdout=out, **options)
+        return api, prompt, out.getvalue()
+
+    def test_answering_no_stops_before_any_api_call(self):
+        """はっきり yes と答えない限り、API は叩かないこと。"""
+        for answer in ("n", "N", "", "  ", "いいえ"):
+            with self.subTest(answer=repr(answer)):
+                api, _, output = self._run_with_answer(answer)
+
+                api.assert_not_called()
+                self.assertIn("中止しました", output)
+
+    def test_answering_yes_runs_the_evaluation(self):
+        for answer in ("y", "Y", "yes", " YES "):
+            with self.subTest(answer=repr(answer)):
+                api, _, output = self._run_with_answer(answer)
+
+                self.assertEqual(
+                    api.call_count, 2 + evaluate_prompt.DEFAULT_GRAY_REPEAT
+                )
+                self.assertIn("評価結果", output)
+
+    def test_the_prompt_says_how_many_runs_and_how_much(self):
+        """確認の時点で、回数と費用が分かること。"""
+        _, prompt, _ = self._run_with_answer("n")
+
+        asked = prompt.call_args[0][0]
+        runs = 2 + evaluate_prompt.DEFAULT_GRAY_REPEAT
+        self.assertIn(f"{runs} 回", asked)
+        self.assertIn(f"${runs * evaluate_prompt.COST_PER_CASE_USD:.2f}", asked)
+
+    def test_the_confirmation_is_skipped_when_it_is_given_up_front(self):
+        """--yes を渡したときは、確認を出さずに実行すること。"""
+        out = io.StringIO()
+        with (
+            mock.patch.object(
+                evaluate_prompt.service,
+                "job_offer_risk_assess",
+                return_value=self.report,
+            ),
+            mock.patch("builtins.input") as prompt,
+        ):
+            call_command("evaluate_prompt", cases=self.path, yes=True, stdout=out)
+
+        prompt.assert_not_called()

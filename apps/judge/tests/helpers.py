@@ -186,3 +186,20 @@ id = "g1"
 category = "gray"
 text = "簡単な仕分け作業 日給1万5千円"
 """
+
+
+def eval_cases_toml(**counts):
+    """カテゴリごとの件数を指定して、最小限のテストセットを組み立てる。
+
+    件数の制限や繰り返しの検証には、1カテゴリに複数件あるテストセットが要る。
+    """
+    blocks = []
+    for category, count in counts.items():
+        for nth in range(1, count + 1):
+            blocks.append(
+                f"[[case]]\n"
+                f'id = "{category}-{nth}"\n'
+                f'category = "{category}"\n'
+                f'text = "募集文 {category} {nth}"\n'
+            )
+    return "\n".join(blocks)
