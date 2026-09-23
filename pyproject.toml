@@ -8,7 +8,9 @@ dependencies = [
     "anthropic>=0.122.0",
     "django>=6.1",
     "django-environ>=0.14.0",
+    "gunicorn>=26.2.0",
     "pillow>=12.3.0",
+    "psycopg[binary]>=3.2.12",
     "pydantic>=2.13.4",
 ]
 
