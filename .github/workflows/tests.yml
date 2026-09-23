@@ -27,6 +27,10 @@ jobs:
       SECRET_KEY: dummy-secret-key-for-ci-only
       DEBUG: "False"
       VIEW_TEST_MODE: "False"
+      # テストクライアントは平文でリクエストするため、DEBUG=False のままだと
+      # SECURE_SSL_REDIRECT が全部を 301 にしてしまう。リダイレクト自体の検証は
+      # HttpsRedirectIsWiredForTheProxyTests が override_settings で行う。
+      SECURE_SSL_REDIRECT: "False"
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
