@@ -116,7 +116,7 @@
         <div class="fs-5 fw-semibold text-primary mt-2" id="loading-msg">
             読み取り中…
         </div>
-        <div class="small text-secondary">
+        <div class="small text-body-secondary">
             AIがあやしいポイントを確認しています。
         </div>
     </div>
@@ -144,7 +144,7 @@
         募集文を貼り付けるだけ ・ 30秒で、闇バイトの可能性をチェック
     </div>
     <h1 class="fw-bold mb-2">バイトジャッジ</h1>
-    <p class="text-secondary mb-4">
+    <p class="text-body-secondary mb-4">
         気になる求人の募集文を貼り付けるだけ。「簡単・高額・即日」の裏に隠れた“ヤバいサイン”を、AIがチェックします。
     </p>
     <ul class="nav nav-tabs" role="tablist">
@@ -177,7 +177,7 @@
                           <div class="fw-semibold">
                               求人のスクショをここに
                           </div>
-                          <div class="small text-secondary mt-1">
+                          <div class="small text-body-secondary mt-1">
                               タップで選択 ・ ドラッグ&ドロップ ・ 貼り付け（Ctrl / Cmd + V）でもOK
                           </div>
                       </div>
@@ -185,7 +185,7 @@
                   </div>
 
                   <input type="file" id="file" name="image" accept="image/*" class="d-none"/>
-                  <div id="filename" class="small text-secondary mb-3 d-none"></div>
+                  <div id="filename" class="small text-body-secondary mb-3 d-none"></div>
                   <div id="file-error" class="text-danger small mb-2 d-none">求人のスクショを選んでください。</div>
                   <button type="submit" class="btn btn-primary w-100">
                       このバイトをチェック
@@ -214,7 +214,7 @@
                       class="form-control mb-1"
                       placeholder="例）日給5万円以上／即日現金手渡し／簡単な受け取り作業のみ／Telegramで連絡ください…"
                   ></textarea>
-                  <div class="small text-secondary mb-3">
+                  <div class="small text-body-secondary mb-3">
                       募集ページや DM の文章をそのまま貼り付けてOKです。会社名・仕事内容・連絡方法など、書かれている部分はできるだけまるごと貼り付けてください。
                   </div>
                   <div id="text-error" class="text-danger small mb-2 d-none">求人の募集文を入力してください。</div>
@@ -276,7 +276,7 @@
                 </span>
                 <div class="flex-grow-1">
                     <div
-                        class="d-flex justify-content-between small text-secondary mb-1"
+                        class="d-flex justify-content-between small text-body-secondary mb-1"
                     >
                         <span>危険度{% if not result.has_enough_info %}（暫定）{% endif %}</span>
                         <span>{{ result.score }}/100</span>
@@ -323,7 +323,7 @@
             <!-- 検出されたシグナル -->
             {% if result.signals %}
             <hr />
-            <div class="eyebrow text-secondary mb-2">
+            <div class="eyebrow text-body-secondary mb-2">
                 見つかったあやしいポイント ・ {{ result.signals|length }}
             </div>
             <ul class="list-group mb-0">
@@ -339,7 +339,7 @@
                     <div>
                         <div class="fw-bold">{{ s.name }}</div>
                         {% if s.detail %}
-                        <div class="small text-secondary">
+                        <div class="small text-body-secondary">
                             {{ s.detail }}
                         </div>
                         {% endif %}
@@ -360,7 +360,7 @@
     {% endif %} {% endif %}
 
     <!-- 注意書き -->
-    <p class="text-secondary small border-top pt-3 mt-4 mb-0">
+    <p class="text-body-secondary small border-top pt-3 mt-4 mb-0">
         これはAIによる目安です。まちがえることもあるので、少しでも不安なら家族や、警察相談専用ダイヤル「#9110」・消費者ホットライン「188（いやや）」に相談してください。送ったテキストと判定結果は、このサイトには保存されません。ただし判定のため外部のAI（Anthropic）に送信され、そちらには一定期間残ります。
     </p>
 {% endblock %}
