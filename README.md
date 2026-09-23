@@ -429,7 +429,8 @@ DATABASE_URL='<直接接続用の文字列>' uv run python manage.py migrate
 ```bash
 gcloud run deploy byte-judge --source . --region asia-northeast1 \
   --allow-unauthenticated \
-  --memory 512Mi --cpu 1 --concurrency 8 --min-instances 0 --timeout 600 \
+  --memory 512Mi --cpu 1 --concurrency 8 \
+  --min-instances 0 --max-instances 4 --timeout 600 \
   --set-env-vars "ALLOWED_HOSTS=<サービスの URL>" \
   --set-secrets "SECRET_KEY=SECRET_KEY:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,DATABASE_URL=DATABASE_URL:latest"
 ```
@@ -444,6 +445,7 @@ gcloud run deploy byte-judge --source . --region asia-northeast1 \
 | `--concurrency 8` | `Dockerfile` の gunicorn `--threads 8` と揃える |
 | `--timeout 600` | 打ち切りの判断はここに一本化（gunicorn 側は `--timeout 0`） |
 | `--min-instances 0` | 使われていないあいだは費用が出ない。初回アクセスは5秒ほどかかる |
+| `--max-instances 4` | 上振れの歯止め。指定しないと gcloud の既定（20）まで広がる。`SITE_DAILY_LIMIT`（既定 11件/日）に対しては 4 でも十分な余裕がある |
 
 ### 6. 確認
 
