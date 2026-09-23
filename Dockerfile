@@ -27,6 +27,12 @@ RUN uv sync --locked --no-dev
 
 COPY . .
 
+# ビルドコンテキストのファイル権限はそのまま持ち込まれる。手元に 600 の
+# ファイルがあると、下の appuser から読めず起動に失敗する（実際に
+# config/__init__.py で踏んだ）。読み取りと、ディレクトリの実行ビットだけを
+# 全員に開ける。書き込みは誰にも開けない。
+RUN chmod -R a+rX /app
+
 # root で動かさない。書き込みは行わないので、ホームディレクトリも作らない。
 RUN useradd --system --no-create-home appuser
 USER appuser
@@ -38,8 +44,12 @@ USER appuser
 #   Cloud Run 側の --concurrency と同じ値に揃えること。
 # アクセスログは出さない：リクエストの記録は Cloud Run 側に既にあり、
 #   同じ内容（IP を含む）をアプリ側でもう一度残す理由が無い。
+# --no-control-socket：gunicorn 25.1 以降は $HOME/.gunicorn/ に制御用ソケットを
+#   作ろうとするが、appuser にホームが無いため起動時にエラーを出す。稼働中の
+#   プロセスを gunicornc で操作する運用はしないので、機能ごと無効にする。
 CMD exec gunicorn config.wsgi:application \
     --bind 0.0.0.0:$PORT \
     --workers 1 \
     --threads 8 \
-    --timeout 0
+    --timeout 0 \
+    --no-control-socket
