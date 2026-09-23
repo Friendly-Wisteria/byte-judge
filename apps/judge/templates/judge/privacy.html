@@ -1,0 +1,375 @@
+{% extends "judge/base.html" %}
+{% comment %}
+  プライバシーポリシー（/privacy/ 想定）。本文は privacy_policy_draft_v2.md の
+  公開部分（1〜12）をそのまま写したもので、ドラフトの「確認が必要な事項」は
+  含めていない。
+
+  view から渡す context は無い（静的なページ）。判定結果のページと違い、
+  Cache-Control: no-store の対象にしなくてよい（機微な情報を含まないため）。
+
+  ■ 公開前に必ずやること（#21 / #22）
+    1. 黄色いバッジ（badge text-bg-warning）の4か所を実際の値に置き換える
+       - 最終更新日 / 運営者名 / 公開URL / 連絡先メールアドレス（2か所）
+       バッジは <span> ごと消して、地の文に戻すこと。
+    2. 冒頭の「未記入の項目があります」の alert（id="draft-banner"）を削除する
+    3. 本文の内容は #22（法28条の整理・同意チェックボックスの扱い）の結論に
+       依存する。結論が変わる場合は、5-5 と 8 の書き方を見直す
+    4. #23（記述と実装の整合）を通す
+{% endcomment %}
+
+{% block title %}プライバシーポリシー - バイトジャッジ{% endblock %}
+
+{% comment %} 長い本文なので、入力画面（col-lg-7）より少しだけ広くとる {% endcomment %}
+{% block col %}col-lg-8{% endblock %}
+
+{% block extra_head %}
+    <style>
+        /* 目次から飛んだときに、見出しが画面の上端に貼り付かないようにする */
+        section {
+            scroll-margin-top: 1rem;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    {% comment %}
+      未記入の箇所の一覧。公開前に、この alert ごと削除する。
+      本文中の該当箇所は badge text-bg-warning で目立たせてある。
+    {% endcomment %}
+    <div id="draft-banner" class="alert alert-warning" role="alert">
+        <h2 class="h6 fw-bold mb-2">⚠️ このページは未完成です（公開前に削除してください）</h2>
+        <p class="small mb-2">
+            以下の項目が未記入です。本文中では
+            <span class="badge text-bg-warning text-wrap fw-normal">この色</span>
+            で示しています。
+        </p>
+        <ul class="small mb-0">
+            <li>最終更新日</li>
+            <li>運営者名（1. 運営者）</li>
+            <li>公開URL（2. このポリシーが適用される範囲）</li>
+            <li>連絡先メールアドレス（1. 運営者 / 12. お問い合わせ）</li>
+        </ul>
+    </div>
+
+    <h1 class="fw-bold mb-2">プライバシーポリシー</h1>
+    <p class="text-secondary small mb-4">
+        最終更新日：<span class="badge text-bg-warning text-wrap fw-normal">要記入：　年　月　日</span>
+    </p>
+
+    <p>
+        バイトジャッジ（以下「本サービス」）は、闇バイトの疑いがある求人の文面を、AIが評価するツールです。
+    </p>
+    <p class="mb-4">
+        本サービスは、みなさんが入力した内容をできるだけ持たない設計にしています。ただし、判定にはAnthropic社のAIサービスを使っているため、<strong>入力内容は外部に送信されます。</strong>
+        このページでは、どの情報がどこに送られ、どこに残り、どこには残らないのかを説明します。
+    </p>
+
+    <!-- 目次。長いページなので、知りたい項目に直接飛べるようにする -->
+    <nav class="card mb-4" aria-label="目次">
+        <div class="card-body">
+            <h2 class="h6 fw-bold mb-3">目次</h2>
+            <ol class="mb-0 small">
+                <li><a href="#operator">運営者</a></li>
+                <li><a href="#scope">このポリシーが適用される範囲</a></li>
+                <li><a href="#not-stored">本サービスのサーバーに保存しないもの</a></li>
+                <li><a href="#stored">本サービスのサーバーに記録するもの</a></li>
+                <li><a href="#external">外部のAIサービスへの送信</a></li>
+                <li><a href="#cookies">Cookieについて</a></li>
+                <li><a href="#limits">本サービスで防ぎきれないこと</a></li>
+                <li><a href="#input">入力にあたってのお願い</a></li>
+                <li><a href="#minors">未成年の方へ</a></li>
+                <li><a href="#disclosure">開示等の請求について</a></li>
+                <li><a href="#changes">このポリシーの変更</a></li>
+                <li><a href="#contact">お問い合わせ</a></li>
+            </ol>
+        </div>
+    </nav>
+
+    <section id="operator" class="mb-5">
+        <h2 class="h4 fw-bold border-bottom pb-2 mb-3">1. 運営者</h2>
+        <ul>
+            <li>運営者：<span class="badge text-bg-warning text-wrap fw-normal">要記入：氏名または名称</span></li>
+            <li>連絡先：<span class="badge text-bg-warning text-wrap fw-normal">要記入：メールアドレス</span></li>
+        </ul>
+        <p class="mb-0">本サービスは個人が非営利で運営しています。</p>
+    </section>
+
+    <section id="scope" class="mb-5">
+        <h2 class="h4 fw-bold border-bottom pb-2 mb-3">2. このポリシーが適用される範囲</h2>
+        <p>
+            このポリシーは、<strong>
+            <span class="badge text-bg-warning text-wrap fw-normal">要記入：https://（公開するURL）</span>
+            で運営者が提供している本サービス</strong>にのみ適用されます。
+        </p>
+        <p class="mb-0">
+            本サービスはソースコードを公開しており、第三者が同じソフトウェアを自分のサーバーで動かすことができます。<strong>その場合の取り扱いは、そのサーバーの運営者が定めるものであり、このポリシーは適用されません。</strong>
+        </p>
+    </section>
+
+    <section id="not-stored" class="mb-5">
+        <h2 class="h4 fw-bold border-bottom pb-2 mb-3">3. 本サービスのサーバーに保存しないもの</h2>
+        <p>以下は、コードを読んだだけの説明ではなく、<strong>自動テストで検証しています。</strong></p>
+        <ul>
+            <li><strong>入力された求人の文面</strong></li>
+            <li><strong>判定結果（危険度スコア・検出されたシグナル・アドバイス）</strong></li>
+            <li><strong>IPアドレス、利用者を特定できる情報</strong></li>
+        </ul>
+        <p>
+            これらはデータベースにもログにも保存されません。処理はリクエストの間だけメモリ上で行われ、画面に結果を表示した時点で破棄されます。これらを保存するためのテーブルもプログラムも存在しません。
+        </p>
+        <p class="mb-0">エラーが発生した場合のログにも、入力された文面は出力されません。</p>
+    </section>
+
+    <section id="stored" class="mb-5">
+        <h2 class="h4 fw-bold border-bottom pb-2 mb-3">4. 本サービスのサーバーに記録するもの</h2>
+
+        <h3 class="h6 fw-bold mt-4 mb-2">4-1. 1日あたりの判定件数</h3>
+        <p>サービス全体で、1日に何回判定したかを記録しています。</p>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle">
+                <tbody>
+                    <tr>
+                        <th scope="row" class="w-25">日付</th>
+                        <td>例：2026-08-28</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">件数</th>
+                        <td>その日にサービス全体で判定した回数</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>
+            これは、AIの利用料金が上限を超えないようにするためのものです。<strong>誰が何回使ったか、何を入力したかは含まれません。</strong>
+        </p>
+
+        <h3 class="h6 fw-bold mt-4 mb-2">4-2. AIの利用量</h3>
+        <p>費用を把握するため、AIサービスの利用量をサーバーのログに記録しています。</p>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle">
+                <tbody>
+                    <tr>
+                        <th scope="row" class="w-25">日時</th>
+                        <td>時単位（分・秒は記録しません）</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">AIのモデル名</th>
+                        <td>claude-sonnet-5</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">処理したデータ量</th>
+                        <td>AI側が返す「トークン数」という単位</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="mb-0">
+            <strong>入力された文面そのものは含まれません。</strong>
+            入力の分量にあたる数値は、おおよその値に丸めたうえで記録しています。
+        </p>
+    </section>
+
+    <section id="external" class="mb-5">
+        <h2 class="h4 fw-bold border-bottom pb-2 mb-3">5. 外部のAIサービスへの送信</h2>
+        <p>
+            <strong>判定を行うため、入力された求人の文面はAnthropic社（アメリカ）のAIサービス（Claude API）に送信されます。</strong>
+        </p>
+        <p>
+            ここから先は本サービスの管理外です。Anthropic社での取り扱いは、同社の商用データ保持ポリシーに従います。
+        </p>
+
+        <h3 class="h6 fw-bold mt-4 mb-2">5-1. 通常の場合</h3>
+        <ul>
+            <li>送信された内容が、Anthropic社のAIの学習に使われることはありません</li>
+            <li>送信された内容は、<strong>通常は最大30日以内に削除されます</strong></li>
+        </ul>
+
+        <h3 class="h6 fw-bold mt-4 mb-2">5-2. 例外がある場合</h3>
+        <p>
+            Anthropic社の自動検知システムが「利用ポリシーに違反する可能性がある」と判断した場合、または法令上の要請があった場合は、上記の30日では削除されません。
+        </p>
+        <ul>
+            <li>入力内容と出力：<strong>最大2年間</strong></li>
+            <li>判定に使われた分類スコア：<strong>最大7年間</strong></li>
+        </ul>
+
+        {% comment %}
+          ここはこのページで最も伝えたい注意。判定結果の警告色と
+          competing しないよう、alert は本文中でこの1か所だけに使う。
+        {% endcomment %}
+        <div class="alert alert-warning mt-4" role="alert">
+            <h3 class="h6 fw-bold mb-2">5-3. ⚠️ 本サービスでは、この例外が起きる可能性が高いと考えられます</h3>
+            <p class="fw-bold">ここは特に注意して読んでください。</p>
+            <p>
+                本サービスがAnthropic社に送るのは、<strong>「犯罪への加担を勧誘している疑いのある文面」そのもの</strong>です。詐欺、強盗、口座やカードの受け渡し、犯罪の隠語といった言葉が、そのまま外部に送信されます。
+            </p>
+            <p>
+                そのため、自動検知システムがこれを「利用ポリシー違反かもしれない」と判断する可能性は、ふつうのサービスより高くなると考えられます。
+            </p>
+            <p>
+                <strong>実際にどのくらいの頻度で起きるのかは、本サービス側からは確認できません。「まず起きない」とは言えません。</strong>
+            </p>
+            <p class="mb-0">送った内容が長期間残る可能性がある前提でご利用ください。</p>
+        </div>
+
+        <h3 class="h6 fw-bold mt-4 mb-2">5-4. キャッシュについて</h3>
+        <p>
+            本サービスがAnthropic社にキャッシュを指定しているのは、<strong>固定の判定用の指示文だけ</strong>です。入力された求人の文面はキャッシュ対象に指定していません。
+        </p>
+        <p>
+            このほか、Anthropic社側で出力の形式を定めたデータ（項目名の定義）が最大24時間キャッシュされますが、ここに入力内容は含まれません。
+        </p>
+
+        <h3 class="h6 fw-bold mt-4 mb-2">5-5. 情報の提供について</h3>
+        <p class="mb-0">
+            Anthropic社が講じている個人情報の保護に関する措置について、ご希望があれば、把握している範囲で情報をお伝えします。<a href="#contact">「12. お問い合わせ」</a>からご連絡ください。
+        </p>
+    </section>
+
+    <section id="cookies" class="mb-5">
+        <h2 class="h4 fw-bold border-bottom pb-2 mb-3">6. Cookieについて</h2>
+        <p>
+            本サービスは、以下の2つのCookieを使用します。<strong>広告や行動追跡には使用しておらず、アクセス解析ツールも導入していません。</strong>
+        </p>
+
+        <h3 class="h6 fw-bold mt-4 mb-2">6-1. 判定回数を数えるCookie</h3>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle">
+                <tbody>
+                    <tr>
+                        <th scope="row" class="w-25">名前</th>
+                        <td><code>bj_quota</code></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">内容</th>
+                        <td>日付と、その日に判定した回数（改ざん防止の署名つき）</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">有効期限</th>
+                        <td>日本時間の翌0時</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">目的</th>
+                        <td>1人あたりの1日の判定回数を制限するため</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p><strong>入力内容も判定結果も、利用者を識別する情報も含まれていません。</strong></p>
+        <p>
+            このCookieはブラウザの設定から削除できます。削除すると回数の制限はリセットされますが、サービス全体の1日の上限は別途適用されます。
+        </p>
+
+        <h3 class="h6 fw-bold mt-4 mb-2">6-2. 不正なリクエストを防ぐCookie</h3>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle">
+                <tbody>
+                    <tr>
+                        <th scope="row" class="w-25">名前</th>
+                        <td><code>csrftoken</code></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">内容</th>
+                        <td>ランダムな文字列</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">目的</th>
+                        <td>第三者による不正なフォーム送信を防ぐため（CSRF対策）</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p>Webアプリケーションの安全のために必要なもので、利用者の追跡には使用しません。</p>
+
+        <h3 class="h6 fw-bold mt-4 mb-2">6-3. 使用していないもの</h3>
+        <p class="mb-0">
+            本サービスはログイン機能を持たないため、<strong>セッションCookie（<code>sessionid</code>）は発行されません。</strong>このことは自動テストで検証しています。
+        </p>
+    </section>
+
+    <section id="limits" class="mb-5">
+        <h2 class="h4 fw-bold border-bottom pb-2 mb-3">7. 本サービスで防ぎきれないこと</h2>
+        <ul>
+            <li>
+                <strong>ブラウザの履歴は残ります。</strong>
+                判定結果のページはブラウザに保存されないよう指定していますが（<code>Cache-Control: no-store</code>）、閲覧履歴そのものは消えません。また「戻る」ボタンで結果が再表示されるかどうかはブラウザによって異なります。判定結果はURLに含まれないため、履歴に残るのはページを開いた事実だけです。
+            </li>
+            <li>
+                <strong>Cookieが端末に残ります。</strong>
+                上記のとおり日付と件数だけですが、「このブラウザで今日何回使ったか」は残ります。
+            </li>
+        </ul>
+        <p class="fw-bold mb-0">
+            共用のパソコンやスマートフォンを使っている場合は、確認が終わったら履歴とCookieを消してください。
+        </p>
+    </section>
+
+    <section id="input" class="mb-5">
+        <h2 class="h4 fw-bold border-bottom pb-2 mb-3">8. 入力にあたってのお願い</h2>
+        <p>判定に必要なのは<strong>募集の文面だけ</strong>です。</p>
+        <p>以下のような情報は、判定に必要ありません。入力する前に消してください。</p>
+        <ul>
+            <li>あなた自身の氏名、住所、電話番号、学校名</li>
+            <li>銀行口座番号、クレジットカード番号</li>
+            <li>募集してきた相手の氏名、電話番号、SNSのアカウント名</li>
+            <li>相手とのやりとりの内容そのもの</li>
+        </ul>
+        <p class="mb-0">
+            上記のとおり、送信された内容は外部に一定期間保持されます。<strong>必要のない個人情報は入力しないでください。</strong>
+        </p>
+    </section>
+
+    <section id="minors" class="mb-5">
+        <h2 class="h4 fw-bold border-bottom pb-2 mb-3">9. 未成年の方へ</h2>
+        <p>
+            本サービスは、闇バイトの標的になりやすい10代から20代前半の方を主な対象としています。
+        </p>
+        <p>
+            判定結果はAIによる参考情報です。<strong>「危険な兆候なし」と表示された場合でも、危険な求人である可能性は残ります。</strong>
+        </p>
+        <p>少しでも不安を感じたら、応募や連絡をする前に、以下に相談してください。</p>
+        {% comment %}
+          相談先は、このページで唯一「今すぐ行動できる」情報なので、
+          地の文から外して一覧で見えるようにする。
+        {% endcomment %}
+        <ul class="list-group mb-3">
+            <li class="list-group-item"><strong>警察相談専用電話 #9110</strong></li>
+            <li class="list-group-item"><strong>消費生活センター 188（いやや）</strong></li>
+            <li class="list-group-item">学校の先生、家族など、身近な信頼できる大人</li>
+        </ul>
+        <p class="mb-0">
+            すでに個人情報を渡してしまった、脅されているという場合も、一人で抱えずに相談してください。
+        </p>
+    </section>
+
+    <section id="disclosure" class="mb-5">
+        <h2 class="h4 fw-bold border-bottom pb-2 mb-3">10. 開示等の請求について</h2>
+        <p>
+            本サービスは、利用者を特定できる情報を保存していません。そのため、<strong>「誰の情報か」を特定して開示・訂正・削除を行うことができません。</strong>
+        </p>
+        <p>
+            保存していない以上、削除の必要もありませんが、ご不明な点があれば<a href="#contact">「12. お問い合わせ」</a>からご連絡ください。
+        </p>
+        <p class="mb-0">
+            Anthropic社に送信された内容の取り扱いについては、同社のプライバシーポリシーをご確認ください。
+        </p>
+    </section>
+
+    <section id="changes" class="mb-5">
+        <h2 class="h4 fw-bold border-bottom pb-2 mb-3">11. このポリシーの変更</h2>
+        <p class="mb-0">
+            内容を変更する場合は、このページを更新し、最終更新日を改めます。重要な変更を行う場合は、サービス内でお知らせします。
+        </p>
+    </section>
+
+    <section id="contact" class="mb-5">
+        <h2 class="h4 fw-bold border-bottom pb-2 mb-3">12. お問い合わせ</h2>
+        <p class="mb-0">
+            <span class="badge text-bg-warning text-wrap fw-normal">要記入：メールアドレス</span>
+        </p>
+    </section>
+
+    <p class="border-top pt-3 mt-4 mb-0">
+        <a href="{% url 'judge:index' %}">← 判定の画面に戻る</a>
+    </p>
+{% endblock %}
