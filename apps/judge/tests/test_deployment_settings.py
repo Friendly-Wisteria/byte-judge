@@ -53,7 +53,7 @@ class CsrfProtectionIsEnforcedTests(TestCase):
         self.assertContains(self.client.get("/"), "csrfmiddlewaretoken")
 
 
-class AllowedHostsMustBeConfiguredTests(TestCase):
+class AllowedHostsMustBeConfiguredTests(SimpleTestCase):
     """ALLOWED_HOSTS が空のまま本番に出たときの挙動の検証。
 
     runserver は起動時に止まるが、gunicorn などではこのチェックが走らない。
@@ -94,7 +94,7 @@ class MigrationsMatchTheModelsTests(TestCase):
             )
 
 
-class DeploymentWarningsAreAccountedForTests(TestCase):
+class DeploymentWarningsAreAccountedForTests(SimpleTestCase):
     """`manage.py check --deploy` の指摘が、把握済みのものだけであることの検証。
 
     いま残っているのは HTTPS 関係の4件。置き場所（リバースプロキシの有無）が
