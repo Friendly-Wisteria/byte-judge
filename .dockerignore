@@ -1,0 +1,23 @@
+# 秘密と、持ち込んではいけないもの
+.env
+.env.*
+*.env
+db.sqlite3
+
+# 評価用テストセットのデータ本体（.gitignore と同じ理由で、成果物に入れない）
+apps/judge/evalset/cases.toml
+
+# 手元の環境・キャッシュ
+.venv
+.git
+.github
+.ruff_cache
+__pycache__/
+*.py[oc]
+.DS_Store
+.claude/
+.reports/
+
+# 開発中のメモ。動作には要らない
+claudecode_tasks.md
+privacy_policy_draft_v2.md
