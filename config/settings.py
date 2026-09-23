@@ -75,15 +75,38 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
+# セキュリティ
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    # テスト（CI）は DEBUG=False で走るが、テストクライアントのリクエストは
+    # 平文のため、有効のままだと全部 301 になる。そこだけ False にできるよう
+    # 環境変数で受ける。本番でリダイレクトがループしたときに、リビジョンの
+    # 環境変数だけで戻せる利点もある。
+    SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 300
+
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+# 本番（Cloud Run）は Neon の PostgreSQL を DATABASE_URL で受け取る。未設定の
+# ときは手元の SQLite にフォールバックするので、開発と CI の手順は変わらない。
+#
+# Cloud Run には永続ディスクが無く、DATABASE_URL が漏れたまま起動すると
+# DailyUsage がインスタンスごと（かつ再起動ごと）に分かれ、SITE_DAILY_LIMIT の
+# 歯止めが効かなくなる。デプロイ時には必ず渡すこと。
+#
+# CONN_MAX_AGE は既定（0：リクエストごとに接続）のままにしている。Neon は
+# 5分で自動サスペンドするため接続を使い回しても切れている可能性があり、かつ
+# 1リクエストあたりの DB 操作は DailyUsage の1行だけで、判定そのものにかかる
+# 時間（数秒〜）に比べれば接続の往復は無視できるため。
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
+    "default": env.db_url(
+        "DATABASE_URL",
+        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+    )
 }
 
 # アップロードファイルの取り扱い

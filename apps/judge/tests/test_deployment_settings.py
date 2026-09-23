@@ -7,6 +7,9 @@
 adminについては、現時点では削除し、後でAPI利用状況の追跡のために実装予定
 """
 
+import unittest
+
+import environ
 from django.conf import settings
 from django.core import checks
 from django.core.management import call_command
@@ -77,6 +80,50 @@ class AllowedHostsMustBeConfiguredTests(SimpleTestCase):
         )
 
 
+class HttpsRedirectIsWiredForTheProxyTests(SimpleTestCase):
+    """HTTPS へのリダイレクトが、前段終端の構成で正しく働くことの検証。
+
+    デプロイ先（Cloud Run）は TLS をフロントエンドで終端し、コンテナへは平文の
+    HTTP で渡す。Django から見たリクエストは常に http になるため、
+    SECURE_PROXY_SSL_HEADER でヘッダを信じる設定が無いまま
+    SECURE_SSL_REDIRECT を有効にすると、何度飛ばしても http のままで
+    リダイレクトループになる（#31）。
+
+    settings.py 側はこの2つを DEBUG=False のときだけ組にして定義しているが、
+    CI では SECURE_SSL_REDIRECT を環境変数で False にして走らせている
+    （テストクライアントは平文で来るため）。ここでは本番と同じ値を明示的に
+    与えて、組み合わせの挙動だけを見る。
+    """
+
+    PRODUCTION_HTTPS_SETTINGS = {
+        "DEBUG": False,
+        "ALLOWED_HOSTS": ["example.com"],
+        "SECURE_SSL_REDIRECT": True,
+        "SECURE_PROXY_SSL_HEADER": ("HTTP_X_FORWARDED_PROTO", "https"),
+    }
+
+    def test_a_plain_request_is_sent_to_https(self):
+        with self.settings(**self.PRODUCTION_HTTPS_SETTINGS):
+            response = self.client.get("/", headers={"host": "example.com"})
+
+        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response["Location"], "https://example.com/")
+
+    def test_a_request_forwarded_as_https_is_served_as_is(self):
+        """前段が https で終端した印（X-Forwarded-Proto）があれば、飛ばさない。
+
+        ここが 301 になる構成はリダイレクトループそのもので、公開後は全ページが
+        開けなくなる。
+        """
+        with self.settings(**self.PRODUCTION_HTTPS_SETTINGS):
+            response = self.client.get(
+                "/",
+                headers={"host": "example.com", "x-forwarded-proto": "https"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+
 class MigrationsMatchTheModelsTests(TestCase):
     """モデルとマイグレーションがずれていないことの検証。
 
@@ -97,20 +144,26 @@ class MigrationsMatchTheModelsTests(TestCase):
 class DeploymentWarningsAreAccountedForTests(SimpleTestCase):
     """`manage.py check --deploy` の指摘が、把握済みのものだけであることの検証。
 
-    いま残っているのは HTTPS 関係の4件。置き場所（リバースプロキシの有無）が
-    決まらないと判断できないため、あえて未設定にしている（#31）。判定回数の
-    Cookie だけは quota.py 側で Secure を立てている。
+    いま残っているのは HSTS をどこまで広げるかの2件だけで、どちらも「まだ
+    出さない」ことが判断の結果として残っているもの（#31）。リダイレクトの
+    挙動は HttpsRedirectIsWiredForTheProxyTests、判定回数の Cookie の Secure は
+    quota.py 側で、それぞれ別に見ている。
 
-    ここで固定しておくと、新しい指摘が増えたときに気づける。4件を解消したら、
+    settings.py の SECURE_* は `if not DEBUG` の中にあるため、この検証は
+    DEBUG=False で読み込まれたときにしか意味を持たない。CI がその条件で走るので、
+    手元（DEBUG=True）では skip する。
+
+    ここで固定しておくと、新しい指摘が増えたときに気づける。残りを解消したら、
     このリストからも消すこと。
     """
 
-    # ALLOWED_HOSTS を設定した状態でも残るもの（W020 は設定すれば消える）
     KNOWN_HTTPS_WARNINGS = {
-        "security.W004",  # SECURE_HSTS_SECONDS
-        "security.W008",  # SECURE_SSL_REDIRECT
-        "security.W012",  # SESSION_COOKIE_SECURE
-        "security.W016",  # CSRF_COOKIE_SECURE
+        # サブドメインまで HTTPS を強制する宣言。カスタムドメインの構成が
+        # 決まってから判断する。
+        "security.W005",  # SECURE_HSTS_INCLUDE_SUBDOMAINS
+        # ブラウザへの事前登録。取り消しが効きにくいので、SECURE_HSTS_SECONDS を
+        # 十分に伸ばして運用が安定してから。
+        "security.W021",  # SECURE_HSTS_PRELOAD
     }
 
     # SECRET_KEY は環境ごとに違う（CI はダミー値、手元は .env の値）。鍵が短いと
@@ -121,10 +174,21 @@ class DeploymentWarningsAreAccountedForTests(SimpleTestCase):
         "test-only-key-" + "Xq7mZ2vB9nL4wP6sT1cR8hJ5dK3gF0yAeU2iO5pW"
     )
 
+    # SECURE_SSL_REDIRECT は CI だけ環境変数で False にしているため、settings.py
+    # の値をそのまま見ると実行環境によって結果が変わる。本番の値を明示して、
+    # どこで走らせても同じ指摘になるようにする。
+    # Django のテストランナーは実行中 settings.DEBUG を強制的に False にするため、
+    # settings.DEBUG では「本番の設定が読み込まれているか」を判定できない。
+    # settings.py が見たのと同じ環境変数を、同じ読み方で確かめる。
+    @unittest.skipUnless(
+        not environ.Env().bool("DEBUG", default=False),
+        "settings.py の SECURE_* は DEBUG=False のときだけ定義される（CI で検証する）",
+    )
     @override_settings(
         DEBUG=False,
         ALLOWED_HOSTS=["example.com"],
         SECRET_KEY=STRONG_ENOUGH_SECRET_KEY,
+        SECURE_SSL_REDIRECT=True,
     )
     def test_no_unexpected_warning_appears(self):
         found = {
