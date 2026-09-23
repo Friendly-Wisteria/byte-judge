@@ -1,4 +1,4 @@
-<!doctype html>
+{% extends "judge/base.html" %}
 {% comment %}
   闇バイト 危険度チェック  Bootstrap(Flatly)版 フロントのみ
   スクショ / テキスト の2経路に対応。ドラッグ&ドロップ / 画像ペースト対応。判定処理は含みません。
@@ -20,537 +20,518 @@
     image = request.FILES.get("image")        # スクショ送信時
     text  = request.POST.get("text", "")      # テキスト送信時
 {% endcomment %}
-<html lang="ja">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>バイトジャッジ - そのバイト、闇バイトかも?</title>
-        <!-- 白背景の Flatly。危険の赤（#e74c3c）が背景に埋もれないテーマを選んでいる。
-             不安な状態で訪れる利用者に緊張感を与えないよう、警告色は判定結果と
-             危険シグナルにだけ使い、地の画面は白と紺で構成する。 -->
-        <link rel="stylesheet"
-              href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.8/dist/flatly/bootstrap.min.css"
-              integrity="sha384-MZ3pnZEBOL1wAG2nrP+M1A9LCApF229c39UC+1T3B96aI3VjuAWMeb1I99GMJacE"
-              crossorigin="anonymous">
-        <style>
-            /* Flatly は .alert を「塗りつぶし＋白文字」にするため、白背景では
-               コントラストが 4.5 を下回る（情報不足の案内で 2.56、危険で 3.82）。
-               判定できない理由や次に取る行動を伝える文章なので、塗りは残した
-               まま文字色を濃くする。差し替え前の Vapor は濃色文字で 4.51 あり、
-               これはテーマ変更による後退なので元の水準に戻す。 */
-            .alert,
-            .alert a,
-            .alert .alert-link {
-                color: var(--bs-emphasis-color);
-            }
-            .eyebrow {
-                font-size: 0.72rem;
-                letter-spacing: 0.18em;
-                text-transform: uppercase;
-            }
-            .dropzone {
-                border: 2px dashed var(--bs-border-color);
-                border-radius: 0.5rem;
-                padding: 2rem 1rem;
-                text-align: center;
-                cursor: pointer;
-                transition:
-                    border-color 0.15s,
-                    background-color 0.15s;
-            }
-            .dropzone:hover {
-                border-color: var(--bs-primary);
-            }
-            .dropzone.dragover {
-                border-color: var(--bs-primary);
-                background-color: rgba(var(--bs-primary-rgb), 0.12);
-            }
-            .dropzone.has-file {
-                padding: 1rem;
-            }
-            #text {
-                min-height: 180px;
-                resize: vertical;
-            }
-            /* 外部送信の説明。警告色の枠にすると身構えさせてしまうため、
-               地の色に近い囲みにして、読み飛ばされない程度の存在感にする。 */
-            .data-notice {
-                background: var(--bs-tertiary-bg);
-            }
-            /* データの流れの図。画像ではなく HTML/CSS で描く（拡大しても
-               崩れず、読み上げにも順序が伝わるよう ol で組む）。 */
-            .dataflow > li {
-                display: flex;
-                flex-wrap: wrap;
-                align-items: center;
-                gap: 0.2rem 0.5rem;
-            }
-            /* 段と段のあいだの矢印。flex の行を丸ごと使って独立した行にする */
-            .dataflow > li + li::before {
-                content: "↓";
-                flex: 0 0 100%;
-                margin: 0.1rem 0 0.1rem 0.8rem;
-                line-height: 1.2;
-                color: var(--bs-secondary-color);
-            }
-            .dataflow-node {
-                border: 1px solid var(--bs-border-color);
-                border-radius: 0.375rem;
-                padding: 0.2rem 0.55rem;
-                background: var(--bs-body-bg);
-            }
-            .dataflow-note::before {
-                content: "→ ";
-            }
-            .dataflow-note {
-                color: var(--bs-secondary-color);
-            }
-            #loading-overlay {
-                position: fixed;
-                inset: 0;
-                z-index: 1080;
-                display: none;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                gap: 1rem;
-                background: rgba(255, 255, 255, 0.92);
-                backdrop-filter: blur(4px);
-                text-align: center;
-                padding: 1rem;
-            }
-            #loading-overlay.show {
-                display: flex;
-            }
-        </style>
-    </head>
-    <body>
-        <div id="loading-overlay" role="status" aria-live="polite">
-            <div
-                class="spinner-border text-primary"
-                style="width: 3rem; height: 3rem"
-            ></div>
-            <div class="fs-5 fw-semibold text-primary mt-2" id="loading-msg">
-                読み取り中…
-            </div>
-            <div class="small text-secondary">
-                AIがあやしいポイントを確認しています。
-            </div>
+
+{% block title %}バイトジャッジ - そのバイト、闇バイトかも?{% endblock %}
+
+{% block extra_head %}
+    <style>
+        .eyebrow {
+            font-size: 0.72rem;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+        }
+        .dropzone {
+            border: 2px dashed var(--bs-border-color);
+            border-radius: 0.5rem;
+            padding: 2rem 1rem;
+            text-align: center;
+            cursor: pointer;
+            transition:
+                border-color 0.15s,
+                background-color 0.15s;
+        }
+        .dropzone:hover {
+            border-color: var(--bs-primary);
+        }
+        .dropzone.dragover {
+            border-color: var(--bs-primary);
+            background-color: rgba(var(--bs-primary-rgb), 0.12);
+        }
+        .dropzone.has-file {
+            padding: 1rem;
+        }
+        #text {
+            min-height: 180px;
+            resize: vertical;
+        }
+        /* 外部送信の説明。警告色の枠にすると身構えさせてしまうため、
+           地の色に近い囲みにして、読み飛ばされない程度の存在感にする。 */
+        .data-notice {
+            background: var(--bs-tertiary-bg);
+        }
+        /* データの流れの図。画像ではなく HTML/CSS で描く（拡大しても
+           崩れず、読み上げにも順序が伝わるよう ol で組む）。 */
+        .dataflow > li {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.2rem 0.5rem;
+        }
+        /* 段と段のあいだの矢印。flex の行を丸ごと使って独立した行にする */
+        .dataflow > li + li::before {
+            content: "↓";
+            flex: 0 0 100%;
+            margin: 0.1rem 0 0.1rem 0.8rem;
+            line-height: 1.2;
+            color: var(--bs-secondary-color);
+        }
+        .dataflow-node {
+            border: 1px solid var(--bs-border-color);
+            border-radius: 0.375rem;
+            padding: 0.2rem 0.55rem;
+            background: var(--bs-body-bg);
+        }
+        .dataflow-note::before {
+            content: "→ ";
+        }
+        .dataflow-note {
+            color: var(--bs-secondary-color);
+        }
+        #loading-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 1080;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(4px);
+            text-align: center;
+            padding: 1rem;
+        }
+        #loading-overlay.show {
+            display: flex;
+        }
+    </style>
+{% endblock %}
+
+{% block body_start %}
+    <div id="loading-overlay" role="status" aria-live="polite">
+        <div
+            class="spinner-border text-primary"
+            style="width: 3rem; height: 3rem"
+        ></div>
+        <div class="fs-5 fw-semibold text-primary mt-2" id="loading-msg">
+            読み取り中…
         </div>
-        <div class="container py-4 py-md-5">
-            <div class="row justify-content-center">
-                <div class="col-12 col-md-10 col-lg-7">
-                    <!-- ヘッダー -->
-                    {% comment %}
-                      判定を返せないときの案内は、入力を直せば通るバリデーション
-                      エラーと混同されないよう、見出しを添える（views の
-                      UNAVAILABLE_TAG が付いたメッセージ）。本文の改行を活かして
-                      「理由 / これからどうなるか / 相談先」の3段に見せる。
-                    {% endcomment %}
-                    {% if messages %}
-                    {% for message in messages %}
-                    <div class="alert alert-{{ message.level_tag }}" role="alert">
-                        {% if "judgment-unavailable" in message.tags %}
-                        <div class="fw-bold mb-2">判定をお届けできませんでした</div>
-                        {% endif %}
-                        {{ message|linebreaksbr }}
-                    </div>
-                    {% endfor %}
-                    {% endif %}
-                    <div class="eyebrow text-primary mb-1">
-                        募集文を貼り付けるだけ ・ 30秒で、闇バイトの可能性をチェック
-                    </div>
-                    <h1 class="fw-bold mb-2">バイトジャッジ</h1>
-                    <p class="text-secondary mb-4">
-                        気になる求人の募集文を貼り付けるだけ。「簡単・高額・即日」の裏に隠れた“ヤバいサイン”を、AIがチェックします。
-                    </p>
-                    <ul class="nav nav-tabs" role="tablist">
-                      {% comment %} 画像投稿UIは一時停止中
-                      <li class="nav-item" role="presentation">
-                        <a class="nav-link active" data-bs-toggle="tab" href="#home" aria-selected="true" role="tab">スクショで送る</a>
-                      </li>
-                      {% endcomment %}
-                      <li class="nav-item" role="presentation">
-                        <a class="nav-link active" data-bs-toggle="tab" href="#profile" aria-selected="true" role="tab">テキストで送る</a>
-                      </li>
-                    </ul>
-                    <div id="myTabContent" class="tab-content">
-                      {% comment %} ============ スクショ タブ（画像投稿UIは一時停止中） ============
-                      <div class="tab-pane fade active show" id="home" role="tabpanel">
-                          <form
-                              id="form-image"
-                              method="post"
-                              enctype="multipart/form-data"
-                              action=""
-                              class="card mb-4"
-                          >
-                              <div class="card-body">
-                                  {% csrf_token %}
-                                  <input type="hidden" name="mode" value="image" />
+        <div class="small text-secondary">
+            AIがあやしいポイントを確認しています。
+        </div>
+    </div>
+{% endblock %}
 
-                                  <!-- ドロップ / クリック / ペースト 対応ゾーン -->
-                                  <div id="dropzone" class="dropzone mb-3">
-                                      <div id="dz-idle">
-                                          <div class="fw-semibold">
-                                              求人のスクショをここに
-                                          </div>
-                                          <div class="small text-secondary mt-1">
-                                              タップで選択 ・ ドラッグ&ドロップ ・ 貼り付け（Ctrl / Cmd + V）でもOK
-                                          </div>
-                                      </div>
-                                      <img id="preview" class="img-fluid rounded d-none" alt=""/>
-                                  </div>
+{% block content %}
+    <!-- ヘッダー -->
+    {% comment %}
+      判定を返せないときの案内は、入力を直せば通るバリデーション
+      エラーと混同されないよう、見出しを添える（views の
+      UNAVAILABLE_TAG が付いたメッセージ）。本文の改行を活かして
+      「理由 / これからどうなるか / 相談先」の3段に見せる。
+    {% endcomment %}
+    {% if messages %}
+    {% for message in messages %}
+    <div class="alert alert-{{ message.level_tag }}" role="alert">
+        {% if "judgment-unavailable" in message.tags %}
+        <div class="fw-bold mb-2">判定をお届けできませんでした</div>
+        {% endif %}
+        {{ message|linebreaksbr }}
+    </div>
+    {% endfor %}
+    {% endif %}
+    <div class="eyebrow text-primary mb-1">
+        募集文を貼り付けるだけ ・ 30秒で、闇バイトの可能性をチェック
+    </div>
+    <h1 class="fw-bold mb-2">バイトジャッジ</h1>
+    <p class="text-secondary mb-4">
+        気になる求人の募集文を貼り付けるだけ。「簡単・高額・即日」の裏に隠れた“ヤバいサイン”を、AIがチェックします。
+    </p>
+    <ul class="nav nav-tabs" role="tablist">
+      {% comment %} 画像投稿UIは一時停止中
+      <li class="nav-item" role="presentation">
+        <a class="nav-link active" data-bs-toggle="tab" href="#home" aria-selected="true" role="tab">スクショで送る</a>
+      </li>
+      {% endcomment %}
+      <li class="nav-item" role="presentation">
+        <a class="nav-link active" data-bs-toggle="tab" href="#profile" aria-selected="true" role="tab">テキストで送る</a>
+      </li>
+    </ul>
+    <div id="myTabContent" class="tab-content">
+      {% comment %} ============ スクショ タブ（画像投稿UIは一時停止中） ============
+      <div class="tab-pane fade active show" id="home" role="tabpanel">
+          <form
+              id="form-image"
+              method="post"
+              enctype="multipart/form-data"
+              action=""
+              class="card mb-4"
+          >
+              <div class="card-body">
+                  {% csrf_token %}
+                  <input type="hidden" name="mode" value="image" />
 
-                                  <input type="file" id="file" name="image" accept="image/*" class="d-none"/>
-                                  <div id="filename" class="small text-secondary mb-3 d-none"></div>
-                                  <div id="file-error" class="text-danger small mb-2 d-none">求人のスクショを選んでください。</div>
-                                  <button type="submit" class="btn btn-primary w-100">
-                                      このバイトをチェック
-                                  </button>
-                              </div>
-                          </form>
+                  <!-- ドロップ / クリック / ペースト 対応ゾーン -->
+                  <div id="dropzone" class="dropzone mb-3">
+                      <div id="dz-idle">
+                          <div class="fw-semibold">
+                              求人のスクショをここに
+                          </div>
+                          <div class="small text-secondary mt-1">
+                              タップで選択 ・ ドラッグ&ドロップ ・ 貼り付け（Ctrl / Cmd + V）でもOK
+                          </div>
                       </div>
-                      {% endcomment %}
+                      <img id="preview" class="img-fluid rounded d-none" alt=""/>
+                  </div>
 
-                      <!-- ============ テキスト タブ ============ -->
-                      <div class="tab-pane fade active show" id="profile" role="tabpanel">
-                          <form
-                              id="form-text"
-                              method="post"
-                              action=""
-                              class="card mb-4"
-                          >
-                              <div class="card-body">
-                                  {% csrf_token %}
-                                  <input type="hidden" name="mode" value="text" />
+                  <input type="file" id="file" name="image" accept="image/*" class="d-none"/>
+                  <div id="filename" class="small text-secondary mb-3 d-none"></div>
+                  <div id="file-error" class="text-danger small mb-2 d-none">求人のスクショを選んでください。</div>
+                  <button type="submit" class="btn btn-primary w-100">
+                      このバイトをチェック
+                  </button>
+              </div>
+          </form>
+      </div>
+      {% endcomment %}
 
-                                  <label for="text" class="form-label fw-semibold">求人の募集文を貼り付け</label>
-                                  <textarea
-                                      id="text"
-                                      name="text"
-                                      class="form-control mb-1"
-                                      placeholder="例）日給5万円以上／即日現金手渡し／簡単な受け取り作業のみ／Telegramで連絡ください…"
-                                  ></textarea>
-                                  <div class="small text-secondary mb-3">
-                                      募集ページや DM の文章をそのまま貼り付けてOKです。会社名・仕事内容・連絡方法など、書かれている部分はできるだけまるごと貼り付けてください。
-                                  </div>
-                                  <div id="text-error" class="text-danger small mb-2 d-none">求人の募集文を入力してください。</div>
+      <!-- ============ テキスト タブ ============ -->
+      <div class="tab-pane fade active show" id="profile" role="tabpanel">
+          <form
+              id="form-text"
+              method="post"
+              action=""
+              class="card mb-4"
+          >
+              <div class="card-body">
+                  {% csrf_token %}
+                  <input type="hidden" name="mode" value="text" />
 
-                                  {% comment %}
-                                    外部送信の説明。送信ボタンのすぐ上に置く。
-                                    同意チェックボックスは付けない（入力前の摩擦が
-                                    離脱を生み、それ自体が安全上の損失になるため）。
-                                  {% endcomment %}
-                                  <div class="data-notice border rounded p-3 mb-3">
-                                      <p class="small mb-2">
-                                          入力内容は、AI判定のため<strong>外部のAIサービス（Anthropic社／アメリカ）に送信</strong>され、通常は最大30日間保持されます（例外あり）。<strong>このサービスのサーバーには保存しません。</strong>
-                                      </p>
-                                      <p class="small fw-bold mb-3">
-                                          氏名・住所・電話番号・口座番号などは入力しないでください。
-                                      </p>
+                  <label for="text" class="form-label fw-semibold">求人の募集文を貼り付け</label>
+                  <textarea
+                      id="text"
+                      name="text"
+                      class="form-control mb-1"
+                      placeholder="例）日給5万円以上／即日現金手渡し／簡単な受け取り作業のみ／Telegramで連絡ください…"
+                  ></textarea>
+                  <div class="small text-secondary mb-3">
+                      募集ページや DM の文章をそのまま貼り付けてOKです。会社名・仕事内容・連絡方法など、書かれている部分はできるだけまるごと貼り付けてください。
+                  </div>
+                  <div id="text-error" class="text-danger small mb-2 d-none">求人の募集文を入力してください。</div>
 
-                                      <ol class="dataflow list-unstyled small mb-0">
-                                          <li>
-                                              <span class="dataflow-node">あなたが入力した内容</span>
-                                          </li>
-                                          <li>
-                                              <span class="dataflow-node">バイトジャッジのサーバー</span>
-                                              <span class="dataflow-note">保存しません</span>
-                                          </li>
-                                          <li>
-                                              <span class="dataflow-node">Anthropic（AI判定）</span>
-                                              <span class="dataflow-note">通常は最大30日で削除（※例外あり）</span>
-                                          </li>
-                                          <li>
-                                              <span class="dataflow-node">結果を画面に表示</span>
-                                          </li>
-                                      </ol>
-                                      {% comment %}
-                                        プライバシーポリシーへのリンクは、ページを
-                                        用意してから足す（リンク切れを残さない）。
-                                      {% endcomment %}
-                                  </div>
-
-                                  <button type="submit" class="btn btn-primary w-100">
-                                      このバイトをチェック
-                                  </button>
-                              </div>
-                          </form>
+                  {% comment %}
+                    外部送信の説明。送信ボタンのすぐ上に置く。
+                    同意チェックボックスは付けない（入力前の摩擦が
+                    離脱を生み、それ自体が安全上の損失になるため）。
+                  {% endcomment %}
+                  <div class="data-notice border rounded p-3 mb-3">
+                      <p class="small mb-2">
+                          入力内容は、AI判定のため<strong>外部のAIサービス（Anthropic社／アメリカ）に送信</strong>され、通常は最大30日間保持されます（例外あり）。<strong>このサービスのサーバーには保存しません。</strong>
+                      </p>
+                      <p class="small fw-bold mb-3">
+                          氏名・住所・電話番号・口座番号などは入力しないでください。
+                      </p>
+                      <div class="d-flex justify-content-center">
+                      <ol class="dataflow list-unstyled small mb-0">
+                          <li>
+                              <span class="dataflow-node">あなたが入力した内容</span>
+                          </li>
+                          <li>
+                              <span class="dataflow-node">バイトジャッジのサーバー</span>
+                              <span class="dataflow-note">保存しません</span>
+                          </li>
+                          <li>
+                              <span class="dataflow-node">Anthropic（AI判定）</span>
+                              <span class="dataflow-note">通常は最大30日で削除（※例外あり）</span>
+                          </li>
+                          <li>
+                              <span class="dataflow-node">結果を画面に表示</span>
+                          </li>
+                      </ol>
                       </div>
+                      <div class="d-flex justify-content-end">
+                          <a href="{% url 'judge:privacy' %}">詳しくはこちら (プライバシーポリシー)</a>
+                      </div>
+                  </div>
+
+                  <button type="submit" class="btn btn-primary w-100">
+                      このバイトをチェック
+                  </button>
+              </div>
+          </form>
+      </div>
+    </div>
+
+
+    <!-- 判定結果（result がある時だけ表示） -->
+    {% if result %}
+    <div class="card mb-4">
+        <div class="card-body">
+            <!-- 危険度メーター -->
+            <div class="d-flex align-items-center gap-3 mb-3">
+                <span
+                    class="badge text-bg-{{ result.bs_color }} fs-5 px-3 py-2"
+                >
+                    {{ result.level_label }}
+                </span>
+                <div class="flex-grow-1">
+                    <div
+                        class="d-flex justify-content-between small text-secondary mb-1"
+                    >
+                        <span>危険度{% if not result.has_enough_info %}（暫定）{% endif %}</span>
+                        <span>{{ result.score }}/100</span>
                     </div>
-
-
-                    <!-- 判定結果（result がある時だけ表示） -->
-                    {% if result %}
-                    <div class="card mb-4">
-                        <div class="card-body">
-                            <!-- 危険度メーター -->
-                            <div class="d-flex align-items-center gap-3 mb-3">
-                                <span
-                                    class="badge text-bg-{{ result.bs_color }} fs-5 px-3 py-2"
-                                >
-                                    {{ result.level_label }}
-                                </span>
-                                <div class="flex-grow-1">
-                                    <div
-                                        class="d-flex justify-content-between small text-secondary mb-1"
-                                    >
-                                        <span>危険度{% if not result.has_enough_info %}（暫定）{% endif %}</span>
-                                        <span>{{ result.score }}/100</span>
-                                    </div>
-                                    <div
-                                        class="progress"
-                                        role="progressbar"
-                                        aria-label="危険度"
-                                        aria-valuenow="{{ result.score }}"
-                                        aria-valuemin="0"
-                                        aria-valuemax="100"
-                                        style="height: 10px"
-                                    >
-                                        <div
-                                            class="progress-bar bg-{{ result.bs_color }}"
-                                            style="width: {{ result.score }}%;"
-                                        ></div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <p class="mb-0">{{ result.summary }}</p>
-
-                            <!-- 判定材料が足りない場合の案内 -->
-                            {% if not result.has_enough_info %}
-                            <div class="alert alert-info mt-3 mb-0" role="alert">
-                                <div class="fw-bold mb-1">この文章だけでは、まだ判断しきれません</div>
-                                <div class="small">
-                                    次の内容が見当たりませんでした。募集ページやDMに書かれている場合は、その部分も貼り付けて、もう一度チェックしてください。判定の精度が上がります。
-                                </div>
-                                {% if result.missing_info_hints %}
-                                <ul class="small mb-0 mt-2">
-                                    {% for item in result.missing_info_hints %}
-                                    <li>
-                                        <span class="fw-semibold">{{ item.label }}</span>
-                                        … {{ item.hint }}
-                                    </li>
-                                    {% endfor %}
-                                </ul>
-                                {% endif %}
-                            </div>
-                            {% endif %}
-
-                            <!-- 検出されたシグナル -->
-                            {% if result.signals %}
-                            <hr />
-                            <div class="eyebrow text-secondary mb-2">
-                                見つかったあやしいポイント ・ {{ result.signals|length }}
-                            </div>
-                            <ul class="list-group mb-0">
-                                {% for s in result.signals %}
-                                <li
-                                    class="list-group-item d-flex flex-column flex-sm-row gap-2"
-                                >
-                                    <span
-                                        class="badge text-bg-{{ s.bs_color }} align-self-start"
-                                    >
-                                        {{ s.severity }}
-                                    </span>
-                                    <div>
-                                        <div class="fw-bold">{{ s.name }}</div>
-                                        {% if s.detail %}
-                                        <div class="small text-secondary">
-                                            {{ s.detail }}
-                                        </div>
-                                        {% endif %}
-                                    </div>
-                                </li>
-                                {% endfor %}
-                            </ul>
-                            {% endif %}
-                        </div>
+                    <div
+                        class="progress"
+                        role="progressbar"
+                        aria-label="危険度"
+                        aria-valuenow="{{ result.score }}"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        style="height: 10px"
+                    >
+                        <div
+                            class="progress-bar bg-{{ result.bs_color }}"
+                            style="width: {{ result.score }}%;"
+                        ></div>
                     </div>
-
-                    <!-- 推奨アクション -->
-                    {% if result.advice %}
-                    <div class="alert alert-{{ result.bs_color }}" role="alert">
-                        <div class="fw-bold mb-1">どうすればいい？</div>
-                        <div>{{ result.advice }}</div>
-                    </div>
-                    {% endif %} {% endif %}
-
-                    <!-- 注意書き -->
-                    <p class="text-secondary small border-top pt-3 mt-4 mb-0">
-                        これはAIによる目安です。まちがえることもあるので、少しでも不安なら家族や、警察相談専用ダイヤル「#9110」・消費者ホットライン「188（いやや）」に相談してください。送ったテキストと判定結果は、このサイトには保存されません。ただし判定のため外部のAI（Anthropic）に送信され、そちらには一定期間残ります。
-                    </p>
                 </div>
             </div>
+
+            <p class="mb-0">{{ result.summary }}</p>
+
+            <!-- 判定材料が足りない場合の案内 -->
+            {% if not result.has_enough_info %}
+            <div class="alert alert-info mt-3 mb-0" role="alert">
+                <div class="fw-bold mb-1">この文章だけでは、まだ判断しきれません</div>
+                <div class="small">
+                    次の内容が見当たりませんでした。募集ページやDMに書かれている場合は、その部分も貼り付けて、もう一度チェックしてください。判定の精度が上がります。
+                </div>
+                {% if result.missing_info_hints %}
+                <ul class="small mb-0 mt-2">
+                    {% for item in result.missing_info_hints %}
+                    <li>
+                        <span class="fw-semibold">{{ item.label }}</span>
+                        … {{ item.hint }}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- 検出されたシグナル -->
+            {% if result.signals %}
+            <hr />
+            <div class="eyebrow text-secondary mb-2">
+                見つかったあやしいポイント ・ {{ result.signals|length }}
+            </div>
+            <ul class="list-group mb-0">
+                {% for s in result.signals %}
+                <li
+                    class="list-group-item d-flex flex-column flex-sm-row gap-2"
+                >
+                    <span
+                        class="badge text-bg-{{ s.bs_color }} align-self-start"
+                    >
+                        {{ s.severity }}
+                    </span>
+                    <div>
+                        <div class="fw-bold">{{ s.name }}</div>
+                        {% if s.detail %}
+                        <div class="small text-secondary">
+                            {{ s.detail }}
+                        </div>
+                        {% endif %}
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
         </div>
+    </div>
 
-        <!-- Bootstrap 本体（タブ切り替え・後続スクリプトの bootstrap.Tab に必要なので先に読み込む） -->
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
-                integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
-                crossorigin="anonymous"></script>
+    <!-- 推奨アクション -->
+    {% if result.advice %}
+    <div class="alert alert-{{ result.bs_color }}" role="alert">
+        <div class="fw-bold mb-1">どうすればいい？</div>
+        <div>{{ result.advice }}</div>
+    </div>
+    {% endif %} {% endif %}
 
-        {% comment %} スクショ(クリック/D&D/ペースト) と テキスト の両フォームに対応（判定処理は含みません） {% endcomment %}
-        <script>
-            (function () {
-              var overlay = document.getElementById('loading-overlay');
-              var msgEl   = document.getElementById('loading-msg');
-              var msgTimer = null;
+    <!-- 注意書き -->
+    <p class="text-secondary small border-top pt-3 mt-4 mb-0">
+        これはAIによる目安です。まちがえることもあるので、少しでも不安なら家族や、警察相談専用ダイヤル「#9110」・消費者ホットライン「188（いやや）」に相談してください。送ったテキストと判定結果は、このサイトには保存されません。ただし判定のため外部のAI（Anthropic）に送信され、そちらには一定期間残ります。
+    </p>
+{% endblock %}
 
-              // ===== 共通: 送信時のオーバーレイ表示 + 二重送信防止 =====
-              function startOverlay(form, messages) {
-                overlay.classList.add('show');
-                var btn = form.querySelector('button[type="submit"]');
-                if (btn) { btn.disabled = true; btn.textContent = 'チェック中…'; }
+{% block scripts %}
+    <!-- Bootstrap 本体（タブ切り替え・後続スクリプトの bootstrap.Tab に必要なので先に読み込む） -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+            integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
+            crossorigin="anonymous"></script>
 
-                var i = 0;
-                if (msgEl) msgEl.textContent = messages[0];
-                if (msgTimer) clearInterval(msgTimer);
-                msgTimer = setInterval(function () {
-                  i = (i + 1) % messages.length;
-                  if (msgEl) msgEl.textContent = messages[i];
-                }, 2500);
+    {% comment %} スクショ(クリック/D&D/ペースト) と テキスト の両フォームに対応（判定処理は含みません） {% endcomment %}
+    <script>
+        (function () {
+          var overlay = document.getElementById('loading-overlay');
+          var msgEl   = document.getElementById('loading-msg');
+          var msgTimer = null;
+
+          // ===== 共通: 送信時のオーバーレイ表示 + 二重送信防止 =====
+          function startOverlay(form, messages) {
+            overlay.classList.add('show');
+            var btn = form.querySelector('button[type="submit"]');
+            if (btn) { btn.disabled = true; btn.textContent = 'チェック中…'; }
+
+            var i = 0;
+            if (msgEl) msgEl.textContent = messages[0];
+            if (msgTimer) clearInterval(msgTimer);
+            msgTimer = setInterval(function () {
+              i = (i + 1) % messages.length;
+              if (msgEl) msgEl.textContent = messages[i];
+            }, 2500);
+          }
+
+          {% comment %} ===== スクショ タブ（画像投稿UIは一時停止中） =====
+          var input     = document.getElementById('file');
+          var dropzone  = document.getElementById('dropzone');
+          var idle      = document.getElementById('dz-idle');
+          var preview   = document.getElementById('preview');
+          var filename  = document.getElementById('filename');
+          var fileError = document.getElementById('file-error');
+          var imageForm = document.getElementById('form-image');
+
+          function setFile(file) {
+            if (!file || !file.type.startsWith('image/')) return;
+
+            var dt = new DataTransfer();
+            dt.items.add(file);
+            input.files = dt.files;
+
+            preview.src = URL.createObjectURL(file);
+            preview.classList.remove('d-none');
+            idle.classList.add('d-none');
+            dropzone.classList.add('has-file');
+
+            filename.textContent = file.name || 'pasted-image';
+            filename.classList.remove('d-none');
+
+            hideFileError();
+          }
+
+          function hasFile() { return input.files && input.files.length > 0; }
+          function hideFileError() {
+            if (fileError) fileError.classList.add('d-none');
+            dropzone.classList.remove('border-danger');
+          }
+          function showFileError() {
+            if (fileError) fileError.classList.remove('d-none');
+            dropzone.classList.add('border-danger');
+            dropzone.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+
+          // 1) クリックで選択
+          dropzone.addEventListener('click', function () { input.click(); });
+          input.addEventListener('change', function () {
+            if (hasFile()) setFile(input.files[0]);
+          });
+
+          // 2) ドラッグ&ドロップ
+          ['dragenter', 'dragover'].forEach(function (ev) {
+            dropzone.addEventListener(ev, function (e) {
+              e.preventDefault();
+              dropzone.classList.add('dragover');
+            });
+          });
+          ['dragleave', 'dragend', 'drop'].forEach(function (ev) {
+            dropzone.addEventListener(ev, function (e) {
+              e.preventDefault();
+              dropzone.classList.remove('dragover');
+            });
+          });
+          dropzone.addEventListener('drop', function (e) {
+            var files = e.dataTransfer && e.dataTransfer.files;
+            if (files && files[0]) setFile(files[0]);
+          });
+
+          // 3) ペースト（スクショタブが開いている時だけ反応させる）
+          window.addEventListener('paste', function (e) {
+            var homeTab = document.getElementById('home');
+            if (!homeTab || !homeTab.classList.contains('active')) return;
+            var items = (e.clipboardData && e.clipboardData.items) || [];
+            for (var i = 0; i < items.length; i++) {
+              if (items[i].type && items[i].type.startsWith('image/')) {
+                var f = items[i].getAsFile();
+                if (f) { setFile(f); break; }
               }
+            }
+          });
 
-              {% comment %} ===== スクショ タブ（画像投稿UIは一時停止中） =====
-              var input     = document.getElementById('file');
-              var dropzone  = document.getElementById('dropzone');
-              var idle      = document.getElementById('dz-idle');
-              var preview   = document.getElementById('preview');
-              var filename  = document.getElementById('filename');
-              var fileError = document.getElementById('file-error');
-              var imageForm = document.getElementById('form-image');
+          // スクショ送信時
+          imageForm.addEventListener('submit', function (e) {
+            if (!hasFile()) {
+              e.preventDefault();
+              showFileError();
+              return;
+            }
+            startOverlay(imageForm, [
+              'スクショを読み取り中…',
+              'あやしいサインを照合中…',
+              '総合的にチェック中…'
+            ]);
+          });
+          {% endcomment %}
 
-              function setFile(file) {
-                if (!file || !file.type.startsWith('image/')) return;
+          // ===== テキスト タブ =====
+          var textForm  = document.getElementById('form-text');
+          var textArea  = document.getElementById('text');
+          var textError = document.getElementById('text-error');
 
-                var dt = new DataTransfer();
-                dt.items.add(file);
-                input.files = dt.files;
+          textArea.addEventListener('input', function () {
+            if (textError) textError.classList.add('d-none');
+            textArea.classList.remove('is-invalid');
+          });
 
-                preview.src = URL.createObjectURL(file);
-                preview.classList.remove('d-none');
-                idle.classList.add('d-none');
-                dropzone.classList.add('has-file');
+          textForm.addEventListener('submit', function (e) {
+            if (!textArea.value.trim()) {
+              e.preventDefault();
+              if (textError) textError.classList.remove('d-none');
+              textArea.classList.add('is-invalid');
+              textArea.focus();
+              return;
+            }
+            startOverlay(textForm, [
+              '募集文を読み取り中…',
+              'あやしいサインを照合中…',
+              '総合的にチェック中…'
+            ]);
+          });
 
-                filename.textContent = file.name || 'pasted-image';
-                filename.classList.remove('d-none');
+          // ===== タブの状態を記憶（送信後リロードでも同じタブを開く） =====
+          var tabLinks = document.querySelectorAll('[data-bs-toggle="tab"]');
+          tabLinks.forEach(function (t) {
+            t.addEventListener('shown.bs.tab', function (e) {
+              try { localStorage.setItem('bj-tab', e.target.getAttribute('href')); } catch (_) {}
+            });
+          });
+          try {
+            var saved = localStorage.getItem('bj-tab');
+            if (saved && window.bootstrap) {
+              var link = document.querySelector('[data-bs-toggle="tab"][href="' + saved + '"]');
+              if (link) bootstrap.Tab.getOrCreateInstance(link).show();
+            }
+          } catch (_) {}
 
-                hideFileError();
-              }
-
-              function hasFile() { return input.files && input.files.length > 0; }
-              function hideFileError() {
-                if (fileError) fileError.classList.add('d-none');
-                dropzone.classList.remove('border-danger');
-              }
-              function showFileError() {
-                if (fileError) fileError.classList.remove('d-none');
-                dropzone.classList.add('border-danger');
-                dropzone.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }
-
-              // 1) クリックで選択
-              dropzone.addEventListener('click', function () { input.click(); });
-              input.addEventListener('change', function () {
-                if (hasFile()) setFile(input.files[0]);
-              });
-
-              // 2) ドラッグ&ドロップ
-              ['dragenter', 'dragover'].forEach(function (ev) {
-                dropzone.addEventListener(ev, function (e) {
-                  e.preventDefault();
-                  dropzone.classList.add('dragover');
-                });
-              });
-              ['dragleave', 'dragend', 'drop'].forEach(function (ev) {
-                dropzone.addEventListener(ev, function (e) {
-                  e.preventDefault();
-                  dropzone.classList.remove('dragover');
-                });
-              });
-              dropzone.addEventListener('drop', function (e) {
-                var files = e.dataTransfer && e.dataTransfer.files;
-                if (files && files[0]) setFile(files[0]);
-              });
-
-              // 3) ペースト（スクショタブが開いている時だけ反応させる）
-              window.addEventListener('paste', function (e) {
-                var homeTab = document.getElementById('home');
-                if (!homeTab || !homeTab.classList.contains('active')) return;
-                var items = (e.clipboardData && e.clipboardData.items) || [];
-                for (var i = 0; i < items.length; i++) {
-                  if (items[i].type && items[i].type.startsWith('image/')) {
-                    var f = items[i].getAsFile();
-                    if (f) { setFile(f); break; }
-                  }
-                }
-              });
-
-              // スクショ送信時
-              imageForm.addEventListener('submit', function (e) {
-                if (!hasFile()) {
-                  e.preventDefault();
-                  showFileError();
-                  return;
-                }
-                startOverlay(imageForm, [
-                  'スクショを読み取り中…',
-                  'あやしいサインを照合中…',
-                  '総合的にチェック中…'
-                ]);
-              });
-              {% endcomment %}
-
-              // ===== テキスト タブ =====
-              var textForm  = document.getElementById('form-text');
-              var textArea  = document.getElementById('text');
-              var textError = document.getElementById('text-error');
-
-              textArea.addEventListener('input', function () {
-                if (textError) textError.classList.add('d-none');
-                textArea.classList.remove('is-invalid');
-              });
-
-              textForm.addEventListener('submit', function (e) {
-                if (!textArea.value.trim()) {
-                  e.preventDefault();
-                  if (textError) textError.classList.remove('d-none');
-                  textArea.classList.add('is-invalid');
-                  textArea.focus();
-                  return;
-                }
-                startOverlay(textForm, [
-                  '募集文を読み取り中…',
-                  'あやしいサインを照合中…',
-                  '総合的にチェック中…'
-                ]);
-              });
-
-              // ===== タブの状態を記憶（送信後リロードでも同じタブを開く） =====
-              var tabLinks = document.querySelectorAll('[data-bs-toggle="tab"]');
-              tabLinks.forEach(function (t) {
-                t.addEventListener('shown.bs.tab', function (e) {
-                  try { localStorage.setItem('bj-tab', e.target.getAttribute('href')); } catch (_) {}
-                });
-              });
-              try {
-                var saved = localStorage.getItem('bj-tab');
-                if (saved && window.bootstrap) {
-                  var link = document.querySelector('[data-bs-toggle="tab"][href="' + saved + '"]');
-                  if (link) bootstrap.Tab.getOrCreateInstance(link).show();
-                }
-              } catch (_) {}
-
-              // ===== 「戻る」でキャッシュ復元されたときに状態をリセット =====
-              window.addEventListener('pageshow', function () {
-                overlay.classList.remove('show');
-                if (msgTimer) { clearInterval(msgTimer); msgTimer = null; }
-                document.querySelectorAll('form button[type="submit"]').forEach(function (b) {
-                  b.disabled = false;
-                  b.textContent = 'このバイトをチェック';
-                });
-              });
-            })();
-        </script>
-    </body>
-</html>
+          // ===== 「戻る」でキャッシュ復元されたときに状態をリセット =====
+          window.addEventListener('pageshow', function () {
+            overlay.classList.remove('show');
+            if (msgTimer) { clearInterval(msgTimer); msgTimer = null; }
+            document.querySelectorAll('form button[type="submit"]').forEach(function (b) {
+              b.disabled = false;
+              b.textContent = 'このバイトをチェック';
+            });
+          });
+        })();
+    </script>
+{% endblock %}
