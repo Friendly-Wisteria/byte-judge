@@ -113,7 +113,19 @@ class DeploymentWarningsAreAccountedForTests(TestCase):
         "security.W016",  # CSRF_COOKIE_SECURE
     }
 
-    @override_settings(DEBUG=False, ALLOWED_HOSTS=["example.com"])
+    # SECRET_KEY は環境ごとに違う（CI はダミー値、手元は .env の値）。鍵が短いと
+    # security.W009 が増えるため、ここでは十分な長さの固定値に差し替えて、
+    # settings.py に書いてある設定だけを見る。本番の鍵についての約束は
+    # README「本番環境にデプロイする場合の必須設定」側に置いている。
+    STRONG_ENOUGH_SECRET_KEY = (
+        "test-only-key-" + "Xq7mZ2vB9nL4wP6sT1cR8hJ5dK3gF0yAeU2iO5pW"
+    )
+
+    @override_settings(
+        DEBUG=False,
+        ALLOWED_HOSTS=["example.com"],
+        SECRET_KEY=STRONG_ENOUGH_SECRET_KEY,
+    )
     def test_no_unexpected_warning_appears(self):
         found = {
             message.id for message in checks.run_checks(include_deployment_checks=True)
