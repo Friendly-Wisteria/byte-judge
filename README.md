@@ -299,6 +299,7 @@ ALLOWED_HOSTS=example.com,www.example.com
   - `INSTALLED_APPS`の `"django.contrib.auth"` / `"django.contrib.contenttypes"`
   - `"django.contrib.auth.middleware.AuthenticationMiddleware"`
   - `"django.contrib.auth.context_processors.auth"`
+
 ---
 
 ## セルフホスト・再配布される方へ（重要）
