@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
-from django.views.generic import FormView
+from django.views.generic import FormView, TemplateView
 
 from . import quota
 from .forms import JobOfferRiskAssessForm
@@ -156,3 +156,7 @@ class IndexView(FormView):
             for error in errors:
                 messages.error(self.request, error)
         return super().form_invalid(form)
+
+
+class PrivacyPolicyView(TemplateView):
+    template_name = "judge/privacy.html"
