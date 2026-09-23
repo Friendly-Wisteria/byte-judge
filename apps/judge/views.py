@@ -26,6 +26,12 @@ CONSULTATION_GUIDE = (
 # バリデーションエラーとは見え方を変えるために使う。
 UNAVAILABLE_TAG = "judgment-unavailable"
 
+# 配線テストモードで出す警告。判定は LLM に投げず fixtures から1件を選ぶため、
+# 見た目は本物と区別がつかない。この一文だけが誤認を防いでいる。
+VIEW_TEST_MODE_WARNING = (
+    "現在、LLMによる判定を中止しています。表示される判定結果は使用しないでください。"
+)
+
 
 def _unavailable(reason: str) -> str:
     """判定不可の案内を組み立てる。相談先が必ず末尾に付く形にする。
@@ -91,7 +97,7 @@ class IndexView(FormView):
         if settings.VIEW_TEST_MODE:
             messages.warning(
                 request,
-                "現在、LLMによる判定を中止しています。表示される判定結果は使用しないでください。",
+                VIEW_TEST_MODE_WARNING,
             )
         return super().get(request, *args, **kwargs)
 
@@ -133,7 +139,7 @@ class IndexView(FormView):
         if settings.VIEW_TEST_MODE:
             messages.warning(
                 self.request,
-                "現在、LLMによる判定を中止しています。表示される判定結果は使用しないでください。",
+                VIEW_TEST_MODE_WARNING,
             )
 
         response = self.render_to_response(
