@@ -32,7 +32,8 @@
 ## 使用している LLM
 
 - **Anthropic Claude** — `anthropic` SDK 経由
-- モデル名は環境変数 `CLAUDE_MODEL` で切り替え可能（既定：`claude-sonnet-5`）
+- モデル名は環境変数 `CLAUDE_MODEL` で切り替え可能（既定：`claude-sonnet-5`。
+  `claude-haiku-4-5` は見落としが確認されたため非推奨）
 - 出力は `RiskReportSchema`（Pydantic）で構造化
 - 安全機構による拒否（`stop_reason: "refusal"`）や出力打ち切り（`max_tokens`）を検出し、その場合は判定結果を表示しません
 - レート制限・月額の利用上限・API 障害・拒否などで判定を受けられないときは、その旨と相談先（#9110）を画面に案内します
@@ -94,8 +95,11 @@ SITE_DAILY_LIMIT=11
   uv run python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
   ```
 - `ANTHROPIC_API_KEY` は [Claude Console](https://platform.claude.com/) で発行してください。
-- `CLAUDE_MODEL` は `claude-haiku-4-5`（最安）にも切り替えられます。
-  ただし **`claude-fable-5` / `claude-mythos-5` は使用しないでください**（後述）。
+- `CLAUDE_MODEL` は既定の `claude-sonnet-5` を推奨します。
+  **`claude-haiku-4-5`（最安）は非推奨です。** 2026-09-22 に実施した
+  サンプルデータでの比較テストで、危険な求人の見落としが 1 件ありました
+  （Sonnet 5 は 0 件）。費用より見落としの少なさを優先してください。
+  また **`claude-fable-5` / `claude-mythos-5` は使用しないでください**（後述）。
 - `ALLOWED_HOSTS` は本番環境では実際のドメインに変更してください（例：`ALLOWED_HOSTS=example.com,www.example.com`）。
 - `PERSON_DAILY_LIMIT` は 1人あたり、`SITE_DAILY_LIMIT` はサイト全体の、1日の判定
   回数です。前者は連打への摩擦（Cookie で数えるため、消せば回避できます）、後者は
@@ -467,6 +471,9 @@ gcloud run services logs read byte-judge --region asia-northeast1 --limit 20
   機微な内容が含まれ得ます。
 - **必ずご自身で発行した Claude API キー（Commercial 組織のキー）を使用してください。**
   リポジトリに同梱の `.env` のキーは公開していません。
+- **`claude-haiku-4-5` への切り替えは推奨しません。** 2026-09-22 のサンプルデータ
+  比較テストで、Sonnet 5 が 0 件だった危険な求人の見落としが 1 件発生しました。
+  コスト削減の効果より、見落としによる利用者のリスクのほうが大きいと判断しています。
 - **`claude-fable-5` / `claude-mythos-5` は `CLAUDE_MODEL` に設定しないでください。**
   これらは Anthropic の Covered Models に指定されており、**30 日間のデータ保持が必須**で、
   ZDR を適用できません。本アプリの用途にはオーバースペックでもあります。
