@@ -13,7 +13,7 @@
 - test_judgment_unavailable.py  判定を返せないときの振り分けと、相談先の案内
 - test_view_test_mode.py        配線テストモードの結果を、本物と誤認させないこと
 - test_oversized_request.py     リクエストが上限を超えたときの見え方
-- test_deployment_settings.py   デプロイ時の前提（CSRF・ホスト名・マイグレーション）
+- test_deployment_settings.py   デプロイ時の前提（CSRF・ホスト名・マイグレーション・admin）
 - test_disclosure.py            入力画面の、外部送信の説明
 - test_quota.py                 1日の判定回数の上限（個人の Cookie / サイト全体）
 - test_evalset_dataset.py       評価用テストセットの読み込み

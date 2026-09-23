@@ -4,13 +4,13 @@
 リクエストを通したり Django のチェックを走らせたりして、本番で効いていて
 ほしい前提が生きていることを確かめる。
 
-admin（/admin/ が公開 URL に残っている件）は、削除するか非公開にするかの
-判断待ちのため、ここでは固定していない（#32）。
+adminについては、現時点では削除し、後でAPI利用状況の追跡のために実装予定
 """
 
+from django.conf import settings
 from django.core import checks
 from django.core.management import call_command
-from django.test import Client, TestCase, override_settings
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 
 from .helpers import JOB_TEXT
 
@@ -132,3 +132,52 @@ class DeploymentWarningsAreAccountedForTests(TestCase):
         }
 
         self.assertEqual(found, self.KNOWN_HTTPS_WARNINGS)
+
+
+class AdminDeploymentTests(SimpleTestCase):
+    def test_django_contrib_admin_not_installed(self):
+        """
+        django.contrib.adminがインストールされていないこと
+        # Mutation Test
+        `settings.py`
+        ```python
+        INSTALLED_APPS = [
+            "django.contrib.admin", #<- この行を追加
+            "django.contrib.auth",
+            "django.contrib.contenttypes",
+            "django.contrib.sessions",
+            "django.contrib.messages",
+            "django.contrib.staticfiles",
+            "apps.judge",
+        ]
+        ```
+        # 必要性
+        現時点では、adminを実装していない。
+        そのため、総当たり攻撃の的となり得るadminのログイン画面を封鎖していることを固定する
+        """
+
+        self.assertFalse("django.contrib.admin" in settings.INSTALLED_APPS)
+
+    def test_admin_url_returns_404(self):
+        """
+        adminのURLが存在しないこと
+        ## 期待する挙動
+        `/admin`と`/admin/login`が404を返す
+        # Mutation Test
+        `config.urls.py`に、以下の2行を追加
+        ```python
+        from django.contrib import admin #<-この行を追加
+        from django.urls import include, path
+
+        urlpatterns = [
+            path("admin/", admin.site.urls), #<-この行を追加
+            path("", include("apps.judge.urls")),
+        ]
+        ```
+        # 必要性
+        未実装のadminが総当たり攻撃の的となりえないように封鎖していることを固定する。
+        """
+        self.assertEqual(self.client.get("/admin").status_code, 404)
+        self.assertEqual(self.client.get("/admin/").status_code, 404)
+        self.assertEqual(self.client.get("/admin/login").status_code, 404)
+        self.assertEqual(self.client.get("/admin/login/").status_code, 404)
