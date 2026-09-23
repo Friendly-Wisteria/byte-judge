@@ -295,7 +295,10 @@ ALLOWED_HOSTS=example.com,www.example.com
 - 判定結果ページは `Cache-Control: no-store` を返します。前段にリバースプロキシや
   CDN を置く場合は、このヘッダが打ち消されたり無視されたりしない設定になっているか
   ご確認ください（「データの取り扱い」の「本アプリでは防ぎきれないこと」を参照）。
-
+- Claude APIのコストと実行回数の閲覧のために、adminを実装予定です。現時点では未実装なので、総当たり攻撃の窓を封鎖するために、`INSTALLED_APPS`に`"django.contrib.admin"`は入れていませんが、将来的な実装の時のため以下は残しています。
+  - `INSTALLED_APPS`の `"django.contrib.auth"` / `"django.contrib.contenttypes"`
+  - `"django.contrib.auth.middleware.AuthenticationMiddleware"`
+  - `"django.contrib.auth.context_processors.auth"`
 ---
 
 ## セルフホスト・再配布される方へ（重要）
