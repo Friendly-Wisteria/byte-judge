@@ -105,6 +105,40 @@ class EvalCommandTests(TestCase):
 
         self.assertIn("ケース数 1", output)
 
+    @override_settings(VIEW_TEST_MODE=True)
+    def test_the_plan_lists_every_category_even_at_zero(self):
+        """0件のカテゴリも欄を出すこと。
+
+        欄ごと消えると「0件」と書いてあるより気づきにくい。このテストセットは
+        disguised を持っていないので、そのまま欠落の例になっている。
+        """
+        output = self._run(dry_run=True)
+
+        self.assertRegex(output, r"disguised\s+0件")
+
+    @override_settings(VIEW_TEST_MODE=True)
+    def test_it_warns_when_a_dangerous_category_is_missing(self):
+        """危険側が欠けていれば警告すること。
+
+        見逃し率の分母は obvious と disguised の両方。片方が0件でも数字は出て
+        しまうため、黙って通すと実態より良い値を実力として読んでしまう。
+        """
+        output = self._run(dry_run=True)
+
+        self.assertIn("危険側のカテゴリが0件です", output)
+        self.assertIn("disguised", output)
+
+    @override_settings(VIEW_TEST_MODE=True)
+    def test_it_stays_quiet_when_both_dangerous_categories_are_present(self):
+        """危険側が揃っていれば警告しないこと。"""
+        self.path.write_text(
+            eval_cases_toml(obvious=1, disguised=1, legitimate=1), encoding="utf-8"
+        )
+
+        output = self._run(dry_run=True)
+
+        self.assertNotIn("危険側のカテゴリが0件です", output)
+
 
 @override_settings(VIEW_TEST_MODE=False)
 class EvalJsonReportTests(TestCase):

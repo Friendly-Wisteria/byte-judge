@@ -118,16 +118,37 @@ class Command(BaseCommand):
         return 1
 
     def _show_plan(self, cases, runs):
+        composition = dataset.composition(cases)
         self.stdout.write("=" * 62)
         self.stdout.write("評価用テストセット")
         self.stdout.write("=" * 62)
-        for name, count in dataset.composition(cases).items():
-            if count:
-                self.stdout.write(f"  {name:12} {count:3d}件  {dataset.CATEGORIES[name]}")
+        # 0件のカテゴリも出す。欄ごと消えると、欠けていることに気づけない。
+        for name, count in composition.items():
+            self.stdout.write(f"  {name:12} {count:3d}件  {dataset.CATEGORIES[name]}")
         self.stdout.write(f"\n  ケース数 {len(cases)} / 判定の実行回数 {runs}")
         self.stdout.write(
             f"  費用の見積もり 約 ${runs * COST_PER_CASE_USD:.2f}"
             f"（実測 ${COST_PER_CASE_USD}/件 × {runs}）"
+        )
+        self._warn_missing_dangerous(composition)
+
+    def _warn_missing_dangerous(self, composition) -> None:
+        """危険側のカテゴリが0件なら警告する。
+
+        見逃し率の分母は obvious と disguised の両方。片方が欠けても数字は
+        出てしまうため、「このサービスの実力」として読むと実態より良く見える。
+        プロンプトを変えた PR の可否をこの数字で決めるので、黙って通さない。
+        """
+        missing = [
+            name for name in sorted(dataset.DANGEROUS_CATEGORIES) if not composition[name]
+        ]
+        if not missing:
+            return
+        self.stdout.write(
+            self.style.WARNING(
+                f"\n  注意: 危険側のカテゴリが0件です（{', '.join(missing)}）。"
+                "\n  見逃し率はこのカテゴリを除いて計算されるため、実態より良く出ます。"
+            )
         )
 
     def _confirm(self, runs) -> bool:
