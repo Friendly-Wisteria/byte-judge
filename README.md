@@ -491,6 +491,15 @@ gcloud run services logs read byte-judge --region asia-northeast1 --limit 20
 
 ---
 
+## コントリビューション
+
+改善の提案を歓迎します。進め方は [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。
+
+判定の精度に直結するため、**判定プロンプトを変える PR は進め方が他と異なります**
+（評価用データセットが非公開のため、メンテナ側で評価を回してから判断します）。
+また、**実在の闇バイト求人の文面を issue や PR に貼らないでください**。公開リポジトリに
+残ると、そのまま募集文のテンプレートとして使えてしまいます。
+
 ## ライセンス
 
 [Apache License 2.0](LICENSE) で公開しています。
