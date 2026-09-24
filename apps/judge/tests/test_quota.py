@@ -305,7 +305,9 @@ class SiteCounterHoldsUnderContentionTests(TestCase):
         quota.reserve_site_slot(self.NOW)  # 当日の行を作る
 
         with CaptureQueriesContext(connection) as captured:
-            self.assertTrue(quota.reserve_site_slot(self.NOW))
+            is_reserved, failure_reason = quota.reserve_site_slot(self.NOW)
+            self.assertTrue(is_reserved)
+            self.assertIsNone(failure_reason)
 
         updates = [
             q["sql"]
@@ -318,8 +320,12 @@ class SiteCounterHoldsUnderContentionTests(TestCase):
 
     def test_a_row_already_at_the_limit_is_not_incremented(self):
         DailyUsage.objects.create(date=self.TODAY, count=settings.SITE_DAILY_LIMIT)
+        is_reserved, failure_reason = quota.reserve_site_slot(self.NOW)
 
-        self.assertFalse(quota.reserve_site_slot(self.NOW))
+        self.assertFalse(is_reserved)
+        self.assertEqual(
+            failure_reason, quota.SiteSlotReservationError.DAILY_QUOTA_REACHED
+        )
         self.assertEqual(DailyUsage.objects.get().count, settings.SITE_DAILY_LIMIT)
 
     def test_a_row_created_by_another_worker_does_not_break_the_reservation(self):
@@ -329,7 +335,9 @@ class SiteCounterHoldsUnderContentionTests(TestCase):
         with mock.patch.object(
             DailyUsage.objects, "get_or_create", side_effect=IntegrityError("race")
         ):
-            self.assertTrue(quota.reserve_site_slot(self.NOW))
+            is_reserved, failure_reason = quota.reserve_site_slot(self.NOW)
+            self.assertTrue(is_reserved)
+            self.assertIsNone(failure_reason)
 
         self.assertEqual(DailyUsage.objects.get().count, 1)
 
