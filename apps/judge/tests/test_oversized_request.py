@@ -110,12 +110,18 @@ class TextareaMaxLengthTest(SimpleTestCase):
 
 @override_settings(VIEW_TEST_MODE=True)
 class TheInputIsHandedBackTests(TestCase):
-    """弾かれても貼り直しにならないこと、上限が HTML 側にも出ていることの検証。
+    """弾かれても貼り直しにならないこと、上限が HTML 側に届いていることの検証。
 
     入力欄を空に戻してしまうと、「短くしてもう一度」と案内しても、短くする元の
-    文章が利用者の手元に無い。maxlength のほうは、送信前に止めることで無駄な
-    往復をなくすためのもの（超過ぶんは黙って捨てられるため、文字数の表示と
-    セットで意味を持つ。その表示は JS なのでここでは検証できない）。
+    文章が利用者の手元に無い。textarea に maxlength は付けないため（超過ぶんが
+    黙って捨てられ、残したい末尾を貼り足せなくなる）、上限で止めるのはサーバー
+    側だけで、JS は文字数の表示しか持たない。
+
+    その表示に JS のテストは入れない判断をしている（#20）。故障しても失われる
+    のはカウンタの表示だけで、相談先の案内・上限の enforcement・入力の復元・
+    送信は、いずれも JS に依存していない。守るべき約束が JS の側に無いので、
+    テスト基盤を入れる費用に見合わない。JS が表示以外のことを始めたら、この
+    判断は無効になる。
     """
 
     def test_the_submitted_text_comes_back_in_the_textarea(self):
