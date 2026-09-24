@@ -525,6 +525,11 @@
 
           // 上限を超えたら、文字数を赤くして「あと何文字削るか」を出す。
           // 入力自体は止めない（止めると、残したい末尾を貼り足せなくなる）。
+          //
+          // ここは表示だけを持つ。止めるのも、相談先を出すのも、入力を戻すのも
+          // サーバー側（forms.MAX_LENGTH_ERROR）なので、この関数が壊れて失われる
+          // のはカウンタの表示だけ。だから JS のテストは入れていない（#20 の判断）。
+          // 表示以外のことを始めたら、その判断はやり直す。
           function renderTextCount() {
             var length = textArea.value.length;
             var over = textLimit > 0 && length > textLimit;
