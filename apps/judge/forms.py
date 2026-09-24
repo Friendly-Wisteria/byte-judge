@@ -1,21 +1,24 @@
 from django import forms
 
+from .consultation import CONSULTATION_GUIDE
+
 # 画像（スクリーンショット）入力は停止中。
 # 以下の定数は再開時にそのまま使えるよう残している（apps/judge/tests/ の
 # @skip 済みテストが参照する）。停止の経緯は README を参照。
 # なお service.py 側の画像処理は、到達しなくなるが残置している。
-MAX_IMAGE_SIZE = 5 * 1024 * 1024   # 5MB
-MAX_IMAGE_PIXELS = 33_000_000       # 約33MP（8Kスクショまで許容。実機を超える解像度は拒否）
+MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
+MAX_IMAGE_PIXELS = 33_000_000  # 約33MP（8Kスクショまで許容。実機を超える解像度は拒否）
 
-OVERSIZED_IMAGE_ERROR = '画像サイズが大きすぎます。5MB以下の画像を選んでください。'
+OVERSIZED_IMAGE_ERROR = "画像サイズが大きすぎます。5MB以下の画像を選んでください。"
 # 画像がフォームに届く前に捨てられた場合の文言。
 # 原因はリクエスト全体のサイズなので、画像単体の上限とは別の案内にする。
 OVERSIZED_REQUEST_ERROR = (
-    '画像とテキストの合計サイズが大きすぎます。'
-    '画像を小さくするか、募集文を短くしてお試しください。'
+    "画像とテキストの合計サイズが大きすぎます。"
+    "画像を小さくするか、募集文を短くしてお試しください。"
 )
 
-NO_INPUT_ERROR = '募集文を入力してください。'
+NO_INPUT_ERROR = "募集文を入力してください。"
+MAX_LENGTH_ERROR = "文字数は3,000文字以内にしてください\n" + CONSULTATION_GUIDE
 
 
 class JobOfferRiskAssessForm(forms.Form):
@@ -24,6 +27,10 @@ class JobOfferRiskAssessForm(forms.Form):
     # 未知のフィールドは Django のフォームが無視するので、image を付けて
     # POST されても text だけで判定され、画像は読み捨てられる。
     text = forms.CharField(  # CharField は既定で strip 済み・required=True
+        max_length=3000,
         widget=forms.Textarea,
-        error_messages={'required': NO_INPUT_ERROR},
+        error_messages={
+            "required": NO_INPUT_ERROR,
+            "max_length": MAX_LENGTH_ERROR,
+        },
     )
