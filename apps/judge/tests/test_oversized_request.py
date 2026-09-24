@@ -12,8 +12,10 @@
 import urllib.parse
 
 from django.conf import settings
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 
+from ..consultation import CONSULTATION_CONTACTS, CONSULTATION_HEADING
+from ..forms import JobOfferRiskAssessForm
 from .helpers import JOB_TEXT, MARKER
 
 
@@ -48,3 +50,38 @@ class OversizedTextIsRefusedBeforeTheViewTests(TestCase):
         self.assertNotContains(
             self._post_oversized_text(), "バイトジャッジ", status_code=400
         )
+
+
+@override_settings(VIEW_TEST_MODE=True)
+class TextareaMaxLengthTest(SimpleTestCase):
+    """フォームの文字数の上限3,000文字を超えた場合に、リクエストが拒否されることを確認する。"""
+
+    MAX_LENGTH = 3000
+
+    def _form(self, length):
+        filler = MARKER + "あ" * (length)
+        form = JobOfferRiskAssessForm(data={"text": filler[:length]})
+        return form
+
+    def test_max_acceptable_letter_count_is_3000(self):
+        """3,000文字ぴったりの長さのテキストは通す
+        変異テスト: `JobOfferRiskAssessForm`の`max_length`を短くする
+        """
+        form = self._form(3000)
+        self.assertTrue(form.is_valid())
+
+    def test_text_excess_3000_letters_is_invalid(self):
+        """3,000文字を一文字でも超えると通さない
+        変異テスト: `JobOfferRiskAssessForm`の`max_length`を長くする
+        """
+        form = self._form(3001)
+        self.assertFalse(form.is_valid())
+
+    def test_error_message_contains_guide_to_consultation(self):
+        """文字数を超過した時に、公的な相談窓口の案内を表示する"""
+        form = self._form(4000)
+        self.assertEqual(len(form.errors["text"]), 1)
+        self.assertIn(CONSULTATION_HEADING, form.errors["text"][0])
+        for contact, case in CONSULTATION_CONTACTS:
+            with self.subTest(contact=contact):
+                self.assertIn(contact, form.errors["text"][0])
