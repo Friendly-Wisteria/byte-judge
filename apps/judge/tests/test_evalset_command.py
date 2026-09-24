@@ -141,6 +141,115 @@ class EvalCommandTests(TestCase):
 
 
 @override_settings(VIEW_TEST_MODE=False)
+class PromptOverrideTests(TestCase):
+    """--prompt で判定プロンプトを差し替えられること。
+
+    データセットが非公開で、外部の貢献者は評価を回せない。プロンプトを変える PR は
+    こちらで測ってマージの可否を決めるので、候補と現行を、追跡下のファイルを
+    書き換えずに比べられる必要がある。
+    """
+
+    def setUp(self):
+        self.path = pathlib.Path(tempfile.mkdtemp()) / "cases.toml"
+        self.path.write_text(EVAL_CASES_TOML, encoding="utf-8")
+        self.report = RiskReportSchema.model_validate(FIXTURES["danger"])
+
+    def _run(self, **kwargs):
+        out = io.StringIO()
+        call_command("evaluate_prompt", cases=self.path, stdout=out, **kwargs)
+        return out.getvalue()
+
+    def test_the_candidate_prompt_reaches_the_service(self):
+        candidate = self.path.parent / "candidate.md"
+        candidate.write_text("# 候補プロンプト", encoding="utf-8")
+
+        with mock.patch.object(
+            evaluate_prompt.service, "job_offer_risk_assess", return_value=self.report
+        ) as api:
+            self._run(yes=True, prompt=candidate)
+
+        for call in api.call_args_list:
+            self.assertEqual(call.kwargs["prompt_path"], candidate)
+
+    def test_the_default_run_does_not_override_the_prompt(self):
+        """既定では差し替えない（本番と同じプロンプトで測る）。"""
+        with mock.patch.object(
+            evaluate_prompt.service, "job_offer_risk_assess", return_value=self.report
+        ) as api:
+            self._run(yes=True)
+
+        for call in api.call_args_list:
+            self.assertIsNone(call.kwargs["prompt_path"])
+
+    def test_a_missing_prompt_stops_before_any_api_call(self):
+        """存在しないパスなら、1件も叩かずに止まること。
+
+        104回まとめて失敗してから気づく、という壊れ方を避ける。
+        """
+        missing = self.path.parent / "not-here.md"
+
+        with (
+            mock.patch.object(evaluate_prompt.service, "job_offer_risk_assess") as api,
+            self.assertRaisesMessage(CommandError, "プロンプトが見つかりません"),
+        ):
+            self._run(yes=True, prompt=missing)
+
+        api.assert_not_called()
+
+    def test_the_json_records_which_prompt_was_used(self):
+        """どのプロンプトで測った数字かが残らないと、比較の記録にならない。"""
+        candidate = self.path.parent / "candidate.md"
+        candidate.write_text("# 候補プロンプト", encoding="utf-8")
+        out_json = self.path.parent / "report.json"
+
+        with mock.patch.object(
+            evaluate_prompt.service, "job_offer_risk_assess", return_value=self.report
+        ):
+            self._run(yes=True, prompt=candidate, json=out_json)
+
+        payload = json.loads(out_json.read_text(encoding="utf-8"))
+        self.assertEqual(payload["prompt"], str(candidate))
+
+    def test_the_json_records_the_default_prompt_when_not_overridden(self):
+        out_json = self.path.parent / "report.json"
+
+        with mock.patch.object(
+            evaluate_prompt.service, "job_offer_risk_assess", return_value=self.report
+        ):
+            self._run(yes=True, json=out_json)
+
+        payload = json.loads(out_json.read_text(encoding="utf-8"))
+        self.assertEqual(payload["prompt"], str(service.PROMPT_PATH))
+
+    def test_the_service_sends_the_prompt_it_was_given(self):
+        """差し替えたファイルの中身が、実際に system として送られること。
+
+        コマンド側の配線だけ見ていても、service が受け取った値を使わなければ
+        意味がないので、ここだけ API 直前まで見る。
+        """
+        candidate = self.path.parent / "candidate.md"
+        candidate.write_text("# 候補プロンプト\nここだけ違う", encoding="utf-8")
+
+        with mock.patch.object(service.anthropic, "Anthropic") as client_class:
+            parse = client_class.return_value.messages.parse
+            parse.return_value = mock.Mock(stop_reason="end_turn")
+            service.job_offer_risk_assess("日給5万円", prompt_path=candidate)
+
+        self.assertIn("ここだけ違う", parse.call_args.kwargs["system"][0]["text"])
+
+    def test_a_missing_candidate_prompt_fails_without_calling_the_api(self):
+        """読めないプロンプトなら、API に投げずに落とすこと（費用だけ出るため）。"""
+        missing = self.path.parent / "not-here.md"
+
+        with mock.patch.object(service.anthropic, "Anthropic") as client_class:
+            parse = client_class.return_value.messages.parse
+            result = service.job_offer_risk_assess("日給5万円", prompt_path=missing)
+
+        self.assertIs(result, service.AssessmentError.FAILED)
+        parse.assert_not_called()
+
+
+@override_settings(VIEW_TEST_MODE=False)
 class EvalJsonReportTests(TestCase):
     """評価結果の JSON 書き出しの検証。
 

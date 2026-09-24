@@ -184,7 +184,9 @@ def _log_token_usage(response) -> None:
 
 
 @sensitive_variables()
-def job_offer_risk_assess(job_offer) -> RiskReportSchema | AssessmentError:
+def job_offer_risk_assess(
+    job_offer, prompt_path: Path | None = None
+) -> RiskReportSchema | AssessmentError:
     """
     求人の画像をClaude APIに投げて、闇バイトへの関与のリスク度合いを評価する
     Args:
@@ -211,12 +213,15 @@ def job_offer_risk_assess(job_offer) -> RiskReportSchema | AssessmentError:
     client = anthropic.Anthropic(timeout=180.0, max_retries=4)
 
     # 2. プロンプトの読み込み
+    #    prompt_path は候補プロンプトを評価するときだけ渡す（evaluate_prompt の
+    #    --prompt）。本番の経路（views）は渡さないので、既定のまま動く。
+    path = prompt_path or PROMPT_PATH
     logger.info("Loading prompt template...")
     try:
-        with open(PROMPT_PATH, encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             prompt_text = f.read()
     except FileNotFoundError:
-        logger.error("Error: Prompt template file not found %s", PROMPT_PATH)
+        logger.error("Error: Prompt template file not found %s", path)
         return AssessmentError.FAILED
 
     # 3. 評価対象の組み立て

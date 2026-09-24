@@ -21,6 +21,10 @@ from apps.judge.quota import JST
 # 1件あたりの費用（実測）。見積もりを出して、実行前に止まれるようにするため。
 COST_PER_CASE_USD = 0.012
 
+# --prompt のオプション名。argparse への登録と options[] の取り出しが
+# 離れているため、名前を1か所にまとめて食い違いを防ぐ。
+PROMPT_OPTION = "prompt"
+
 # グレーだけ既定で繰り返す。判定がぶれやすいのがこのカテゴリで、
 # 全カテゴリを繰り返すと費用が件数ぶん増えるため。
 DEFAULT_GRAY_REPEAT = 3
@@ -58,6 +62,13 @@ class Command(BaseCommand):
         parser.add_argument(
             "--yes", action="store_true", help="実行前の確認を省く"
         )
+        # オプション名を変えるときは、handle() の options[PROMPT_OPTION] も
+        # 一緒に変わるよう、名前を PROMPT_OPTION に一本化している。
+        parser.add_argument(
+            f"--{PROMPT_OPTION}",
+            type=Path,
+            help="判定プロンプトのパス（候補プロンプトとの比較用。既定は本番と同じ）",
+        )
 
     def handle(self, *args, **options):
         try:
@@ -69,10 +80,16 @@ class Command(BaseCommand):
         if not cases:
             raise CommandError("対象のケースがありません")
 
+        # 受け取り側。argparse の "--{PROMPT_OPTION}" と対になっている。
+        prompt_path = options[PROMPT_OPTION]
+        # まとめて失敗してから気づく、という壊れ方を避けるため先に確かめる
+        if prompt_path and not prompt_path.exists():
+            raise CommandError(f"プロンプトが見つかりません: {prompt_path}")
+
         plan = [(case, self._repeats(case, options)) for case in cases]
         runs = sum(n for _, n in plan)
 
-        self._show_plan(cases, runs)
+        self._show_plan(cases, runs, prompt_path)
         if options["dry_run"]:
             self.stdout.write("\n--dry-run のため、API は呼び出していません。")
             return
@@ -88,12 +105,12 @@ class Command(BaseCommand):
             self.stdout.write("中止しました。")
             return
 
-        outcomes = self._run(plan)
+        outcomes = self._run(plan, prompt_path)
         report = self._report(cases, outcomes, runs)
         self.stdout.write(report)
 
         if options["json"]:
-            self._write_json(options["json"], cases, outcomes)
+            self._write_json(options["json"], cases, outcomes, prompt_path)
 
     # ---- 準備 -------------------------------------------------------------
 
@@ -117,7 +134,7 @@ class Command(BaseCommand):
             return max(1, options["gray_repeat"])
         return 1
 
-    def _show_plan(self, cases, runs):
+    def _show_plan(self, cases, runs, prompt_path=None):
         composition = dataset.composition(cases)
         self.stdout.write("=" * 62)
         self.stdout.write("評価用テストセット")
@@ -130,6 +147,8 @@ class Command(BaseCommand):
             f"  費用の見積もり 約 ${runs * COST_PER_CASE_USD:.2f}"
             f"（実測 ${COST_PER_CASE_USD}/件 × {runs}）"
         )
+        if prompt_path:
+            self.stdout.write(f"  プロンプト   {prompt_path}（既定ではありません）")
         self._warn_missing_dangerous(composition)
 
     def _warn_missing_dangerous(self, composition) -> None:
@@ -159,7 +178,7 @@ class Command(BaseCommand):
 
     # ---- 実行 -------------------------------------------------------------
 
-    def _run(self, plan):
+    def _run(self, plan, prompt_path=None):
         outcomes = []
         done, total = 0, sum(n for _, n in plan)
         # 端末なら1行を上書きし、ファイルへ流すときは1行ずつ残す
@@ -175,7 +194,7 @@ class Command(BaseCommand):
                     ending="\r" if interactive else "\n",
                 )
                 self.stdout.flush()
-                outcomes.append(self._judge(case))
+                outcomes.append(self._judge(case, prompt_path))
         self.stdout.write(f"\n実行時間 {self._duration(time.monotonic() - started)}\n")
         return outcomes
 
@@ -184,8 +203,8 @@ class Command(BaseCommand):
             return f"{seconds:.0f} 秒"
         return f"{int(seconds // 60)} 分 {int(seconds % 60):02d} 秒"
 
-    def _judge(self, case):
-        result = service.job_offer_risk_assess(case.text)
+    def _judge(self, case, prompt_path=None):
+        result = service.job_offer_risk_assess(case.text, prompt_path=prompt_path)
         if isinstance(result, service.AssessmentError):
             return metrics.Outcome(
                 case_id=case.id, category=case.category, error=result.name
@@ -248,13 +267,15 @@ class Command(BaseCommand):
         lines.append("=" * 62)
         return "\n".join(lines)
 
-    def _write_json(self, path: Path, cases, outcomes):
+    def _write_json(self, path: Path, cases, outcomes, prompt_path=None):
         fn = metrics.false_negative(outcomes)
         gray = metrics.stability(outcomes, category="gray")
         recall = metrics.signal_recall(cases, outcomes)
         payload = {
             "run_at": datetime.now(JST).isoformat(timespec="seconds"),
             "model": settings.CLAUDE_MODEL,
+            # どのプロンプトで測った数字かが残らないと、比較の記録にならない
+            "prompt": str(prompt_path or service.PROMPT_PATH),
             "cases": len(cases),
             "runs": len(outcomes),
             "false_negative_rate": fn.rate,
