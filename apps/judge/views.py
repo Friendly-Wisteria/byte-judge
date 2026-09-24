@@ -114,10 +114,11 @@ class IndexView(FormView):
         # 全体の枠を確保する。取れなければ API は叩かない。個人の枠と違い、
         # 判定を返せたかどうかではなく「API に投げるか」で数える
         # （拒否や打ち切りでも、出力ぶんの費用は出ているため）。
-        if not settings.VIEW_TEST_MODE and not quota.reserve_site_slot():
-            logger.warning("Site-wide daily limit reached")
-            _report_unavailable(self.request, SITE_QUOTA_ERROR)
-            return self.render_to_response(self.get_context_data(form=form))
+        if not settings.VIEW_TEST_MODE:
+            is_reserved, _ = quota.reserve_site_slot()
+            if not is_reserved:
+                _report_unavailable(self.request, SITE_QUOTA_ERROR)
+                return self.render_to_response(self.get_context_data(form=form))
 
         # 画像入力は停止中。フォームに image フィールドが無いため、POST に
         # image を含めても cleaned_data には載らず、判定はテキストだけで行う。

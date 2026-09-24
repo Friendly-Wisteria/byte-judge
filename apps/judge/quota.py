@@ -11,19 +11,22 @@ Anthropic 側の月額上限（service.AssessmentError.UNAVAILABLE）に置い�
 
 import logging
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 
 from django.conf import settings
 from django.core.signing import BadSignature
-from django.db import IntegrityError
+from django.db import DatabaseError, IntegrityError
 from django.db.models import F
 
 from .models import DailyUsage
 
 logger = logging.getLogger(__name__)
 
+
 def person_limit() -> int:
     """1人あたりの1日の判定回数。"""
     return int(getattr(settings, "PERSON_DAILY_LIMIT", 4))
+
 
 # 全体の件数を残す日数。過去ぶんは運用の観測（1日に何件来ているか）に使う。
 RETENTION_DAYS = 90
@@ -34,6 +37,17 @@ COOKIE_SALT = "apps.judge.quota"
 # 利用者は日本国内を想定しているため、リセットは日本時間の0時に合わせる
 # （settings.TIME_ZONE は UTC のままなので、ここで明示的に JST へ変換する）。
 JST = timezone(timedelta(hours=9), "JST")
+
+
+class SiteSlotReservationError(Enum):
+    """サイト全体の枠を確保できなかった理由。確保できた場合は None を返す。
+
+    DATABASE_ERROR: 件数を記録している DB に接続できなかった場合。
+    DAILY_QUOTA_REACHED: すでに1日の上限に達している場合。
+    """
+
+    DATABASE_ERROR = "database_error"
+    DAILY_QUOTA_REACHED = "daily_quota_reached"
 
 
 def _now_jst() -> datetime:
@@ -106,8 +120,12 @@ def site_limit() -> int:
     return int(getattr(settings, "SITE_DAILY_LIMIT", 20))
 
 
-def reserve_site_slot(now: datetime | None = None) -> bool:
+def reserve_site_slot(
+    now: datetime | None = None,
+) -> tuple[bool, SiteSlotReservationError | None]:
     """全体の枠を 1 件ぶん確保する。取れなければ False。
+
+    第二要素は取れなかった理由（確保できたときは None）。
 
     個人の枠と違い「API に投げた回数」を数える。拒否や打ち切りでも出力ぶんの
     費用は出ているため、費用の歯止めとしては投げた回数で数えるのが正しい。
@@ -117,18 +135,30 @@ def reserve_site_slot(now: datetime | None = None) -> bool:
     """
     now = now or _now_jst()
     today = now.date()
-
+    reason = None
     try:
-        _, created = DailyUsage.objects.get_or_create(date=today)
-    except IntegrityError:
-        created = False  # 同時に作られた。行はあるので続行する。
-    if created:
-        DailyUsage.objects.filter(
-            date__lt=today - timedelta(days=RETENTION_DAYS)
-        ).delete()
+        try:
+            _, created = DailyUsage.objects.get_or_create(date=today)
+        except IntegrityError:
+            # 別のワーカーが同時に作った。行はあるので続行する。
+            created = False
 
-    return bool(
-        DailyUsage.objects.filter(date=today, count__lt=site_limit()).update(
-            count=F("count") + 1
+        if created:
+            DailyUsage.objects.filter(
+                date__lt=today - timedelta(days=RETENTION_DAYS)
+            ).delete()
+
+        is_reserved = bool(
+            DailyUsage.objects.filter(date=today, count__lt=site_limit()).update(
+                count=F("count") + 1
+            )
         )
-    )
+        if not is_reserved:
+            logger.warning("Site-wide daily limit reached")
+            reason = SiteSlotReservationError.DAILY_QUOTA_REACHED
+    except DatabaseError:
+        logger.exception("Database error while reserving a site slot")
+        reason = SiteSlotReservationError.DATABASE_ERROR
+        is_reserved = False
+
+    return is_reserved, reason
