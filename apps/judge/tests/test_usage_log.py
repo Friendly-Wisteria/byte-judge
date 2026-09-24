@@ -8,7 +8,7 @@ import re
 from unittest import mock
 
 from django.conf import settings
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from .. import service
 from ..fixtures import FIXTURES
@@ -16,6 +16,11 @@ from ..schema import RiskReportSchema
 from .helpers import JOB_TEXT, MARKER, capture_logs
 
 
+# このクラスは実 API 経路（使用量が出る経路）を見るため、VIEW_TEST_MODE を
+# 明示的に落とす。手元の .env が True だと、fixtures を返す経路に入って
+# 使用量のログが1行も出ず、ログを検査する9件がまとめて落ちる。テストの
+# 結果が環境変数に左右されないよう、ここで固定する。
+@override_settings(VIEW_TEST_MODE=False)
 class TokenUsageIsLoggedTests(TestCase):
     """トークン使用量が、標準出力にだけ残ることの検証。
 
