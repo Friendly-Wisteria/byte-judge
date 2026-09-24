@@ -52,6 +52,16 @@ LLM_UNAVAILABLE_ERROR = _unavailable(
     "時間をおくと使えるようになることがありますが、いつ戻るかはお約束できません。"
 )
 
+# サイト側の事情（データベース障害など、実装側の障害）で判定を受けられない
+# ときの案内。利用者が入力を直しても解消しないため、「あなたの書き方の問題では
+# ない」ことが分かる書き方にする。上限で埋まった場合（SITE_QUOTA_ERROR）と違い、
+# 日付が変わって直るとは限らないため、復帰の時期は約束しない。
+SITE_UNAVAILABLE_ERROR = _unavailable(
+    "いまは、判定を行えません。\n"
+    "サイト側の問題なので、文章を直しても解決しません。"
+    "時間をおくと使えるようになることがありますが、いつ戻るかはお約束できません。"
+)
+
 # 応答は得られたが、判定結果として受け取れなかった場合（構造化出力のパース
 # 失敗・出力の打ち切りなど）。再試行で通ることがあるため、そちらを先に案内する。
 ASSESSMENT_FAILED_ERROR = _unavailable(
@@ -115,9 +125,14 @@ class IndexView(FormView):
         # 判定を返せたかどうかではなく「API に投げるか」で数える
         # （拒否や打ち切りでも、出力ぶんの費用は出ているため）。
         if not settings.VIEW_TEST_MODE:
-            is_reserved, _ = quota.reserve_site_slot()
+            is_reserved, failure_reason = quota.reserve_site_slot()
             if not is_reserved:
-                _report_unavailable(self.request, SITE_QUOTA_ERROR)
+                if failure_reason is quota.SiteSlotReservationError.DAILY_QUOTA_REACHED:
+                    _report_unavailable(self.request, SITE_QUOTA_ERROR)
+                else:
+                    # 上限以外は、理由を問わずサイト側の障害として案内する。
+                    # 理由が増えたときに、案内の無い画面を返さないため。
+                    _report_unavailable(self.request, SITE_UNAVAILABLE_ERROR)
                 return self.render_to_response(self.get_context_data(form=form))
 
         # 画像入力は停止中。フォームに image フィールドが無いため、POST に

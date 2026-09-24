@@ -9,10 +9,12 @@ import tempfile
 from unittest import mock
 
 import anthropic
+from django.db import OperationalError
 from django.test import SimpleTestCase, TestCase, override_settings
 
 from .. import forms, service, views
 from ..fixtures import FIXTURES
+from ..models import DailyUsage
 from ..schema import RiskReportSchema
 from .helpers import (
     JOB_TEXT,
@@ -186,6 +188,53 @@ class ApiUnavailableIsGuidedToConsultationTests(TestCase):
         assert_consultation_is_offered(self, response)
 
 
+@override_settings(VIEW_TEST_MODE=False)
+class DatabaseFailureIsGuidedToConsultationTests(TestCase):
+    """データベースに触れないときの案内の検証。
+
+    サイト全体の枠は DB で数えているため、接続できないと判定の POST 経路で
+    例外が上へ抜け、本番では Django の素の 500 ページが返っていた（#45）。
+    LLM 側の失敗には相談先を出しているのに、DB 側の失敗だけがその網から
+    外れていた。不安な状態で訪れた人に、案内の無いページを返すことになる。
+
+    接続は get_or_create の後でも切れる（保存期間の削除・確保の UPDATE）ため、
+    そちらで落ちる場合も見る。
+    """
+
+    def _post_with_database_failure(self, attribute):
+        """DailyUsage への問い合わせを、接続断に差し替えて POST する。"""
+        error = OperationalError("could not connect to server")
+        with mock.patch.object(DailyUsage.objects, attribute, side_effect=error):
+            return self.client.post("/", {"mode": "text", "text": JOB_TEXT})
+
+    def test_a_connection_failure_is_guided_instead_of_a_bare_500(self):
+        for attribute in ("get_or_create", "filter"):
+            with self.subTest(attribute=attribute):
+                response = self._post_with_database_failure(attribute)
+
+                self.assertEqual(response.status_code, 200)
+                self.assertIsNone(response.context.get("result"))
+                self.assertContains(response, "いまは、判定を行えません")
+                assert_consultation_is_offered(self, response)
+
+    def test_the_daily_limit_message_is_not_shown(self):
+        """上限で埋まったときの案内と混同しないこと。
+
+        「日付が変わると、また使えるようになります」は、DB 障害では事実と
+        違う（明日また来ればよい／いま一時的に動いていない、の違い）。
+        """
+        response = self._post_with_database_failure("get_or_create")
+
+        self.assertNotContains(response, "本日ぶんの判定枠")
+
+    def test_the_api_is_not_called_when_the_slot_cannot_be_reserved(self):
+        """枠を数えられない状態では、費用の出る判定に進まないこと（fail closed）。"""
+        with mock.patch.object(views, "job_offer_risk_assess") as assess:
+            self._post_with_database_failure("get_or_create")
+
+        assess.assert_not_called()
+
+
 class UnavailableGuidanceTests(SimpleTestCase):
     """判定を返せないときの案内そのものの検証。
 
@@ -198,6 +247,7 @@ class UnavailableGuidanceTests(SimpleTestCase):
         return {
             "個人の日次上限": views.daily_quota_error(),
             "サイト全体の日次上限": views.SITE_QUOTA_ERROR,
+            "サイト側の障害で判定不可": views.SITE_UNAVAILABLE_ERROR,
             "API 側の事情で判定不可": views.LLM_UNAVAILABLE_ERROR,
             "判定結果を受け取れず": views.ASSESSMENT_FAILED_ERROR,
         }
