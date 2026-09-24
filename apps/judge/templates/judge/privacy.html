@@ -8,8 +8,8 @@
   Cache-Control: no-store の対象にしなくてよい（機微な情報を含まないため）。
 
   ■ 公開前に必ずやること（#21 / #22）
-    1. 黄色いバッジ（badge text-bg-warning）の4か所を実際の値に置き換える
-       - 最終更新日 / 運営者名 / 公開URL / 連絡先メールアドレス（2か所）
+    1. 黄色いバッジ（badge text-bg-warning）の2か所を実際の値に置き換える
+       - 最終更新日 / 公開URL
        バッジは <span> ごと消して、地の文に戻すこと。
     2. 冒頭の「未記入の項目があります」の alert（id="draft-banner"）を削除する
     3. 本文の内容は #22（法28条の整理・同意チェックボックスの扱い）の結論に
@@ -45,9 +45,7 @@
         </p>
         <ul class="small mb-0">
             <li>最終更新日</li>
-            <li>運営者名（1. 運営者）</li>
             <li>公開URL（2. このポリシーが適用される範囲）</li>
-            <li>連絡先メールアドレス（1. 運営者 / 12. お問い合わせ）</li>
         </ul>
     </div>
 
@@ -89,7 +87,7 @@
         <h2 class="h4 fw-bold border-bottom pb-2 mb-3">1. 運営者</h2>
         <ul>
             <li>運営者：Project Byte Judge</li>
-            <li>連絡先：<span class="badge text-bg-warning text-wrap fw-normal">要記入：メールアドレス</span></li>
+            <li>連絡先：<a class="text-break" href="mailto:byte-judge-admin@wisteria-tech.com">byte-judge-admin@wisteria-tech.com</a></li>
         </ul>
         <p class="mb-0">本サービスは個人が非営利で運営しています。</p>
     </section>
@@ -364,8 +362,12 @@
 
     <section id="contact" class="mb-5">
         <h2 class="h4 fw-bold border-bottom pb-2 mb-3">12. お問い合わせ</h2>
+        <p>
+            本サービスについてのご質問やご指摘は、メールでご連絡ください。
+            個人で運営しているため、お返事にお時間をいただくことがあります。
+        </p>
         <p class="mb-0">
-            <span class="badge text-bg-warning text-wrap fw-normal">要記入：メールアドレス</span>
+            <a class="text-break" href="mailto:byte-judge-admin@wisteria-tech.com">byte-judge-admin@wisteria-tech.com</a>
         </p>
     </section>
 
