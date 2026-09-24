@@ -1,0 +1,53 @@
+{% extends "judge/base.html" %}
+{% comment %}
+  素の 500 ページの差し替え（#45 の保険）。
+
+  判定の経路で判定を返せない場合は views 側で案内を出しているが（上限・LLM
+  側の事情・サイト側の障害）、そこに載らない想定外の例外では Django の既定の
+  500 ページが返る。不安な状態で訪れた人を、案内の無いページで締め出さない
+  ための最後の受け皿。
+
+  この画面は GET（トップを開いた瞬間）でも POST（判定の送信後）でも出るため、
+  送信を前提にした書き方をしない。POST で来た人にとって「結果が届いていない」
+  ことはこの画面を見ている事実から自明なので、その説明も置かない。
+
+  django.views.defaults.server_error は context も request も渡さずに
+  render() するため、messages・csrf_token・request を参照する記述は使えない
+  （base.html の {% templatetag openblock %} url {% templatetag closeblock %} とフッターは影響を受けない）。DB にも触れない。
+  500 を返している状況で、さらに問い合わせを増やさないため。
+
+  相談先の文言は、いまは views.CONSULTATION_GUIDE と二重管理になっている。
+  片方だけ古くなるのを防ぐため、共通のテンプレートへ切り出す予定。
+{% endcomment %}
+
+{% block title %}ただいまサイトが正しく動いていません - バイトジャッジ{% endblock %}
+
+{% block content %}
+    <h1 class="fw-bold h4 mb-3">ただいま、サイトが正しく動いていません</h1>
+    {% comment %}
+      判定不可の案内（views の _unavailable）と同じ3段に揃える。
+      理由 / これからどうなるか / 相談先。
+    {% endcomment %}
+    <div class="alert alert-danger" role="alert">
+        サイト側で問題が起きています。あなたの操作や入力が原因ではありません。<br>
+        時間をおくと使えるようになることがありますが、いつ戻るかはお約束できません。
+    </div>
+    <p class="fw-bold mb-2">不安なときは、ひとりで抱えずに相談してください。</p>
+    {% comment %}
+      番号と用途は views.CONSULTATION_GUIDE と同じ文言にしている。
+      強調タグで区切ると文字列として照合できなくなるため、地の文のまま置く。
+      なお見出しは「判定をお届けできませんでした」ではないので、この画面の
+      テストで assert_consultation_is_offered() は使えない（あちらはその見出し
+      の存在も確かめている）。相談先の2行を直接照合すること。
+    {% endcomment %}
+    <ul>
+        <li>警察相談専用ダイヤル #9110（犯罪かもしれない、と思ったとき）</li>
+        <li>消費者ホットライン 188（いやや）（お金を払ってしまったとき）</li>
+    </ul>
+    <p class="text-body-secondary mb-0 mt-3">
+        <small>入力した文章は保存されないため、復帰後にもう一度貼り付けてください。</small>
+    </p>
+    <p class="border-top pt-3 mt-4 mb-0">
+        <a href="{% url 'judge:index' %}">最初のページに戻る</a>
+    </p>
+{% endblock %}
