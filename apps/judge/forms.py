@@ -18,7 +18,24 @@ OVERSIZED_REQUEST_ERROR = (
 )
 
 NO_INPUT_ERROR = "募集文を入力してください。"
-MAX_LENGTH_ERROR = "文字数は3,000文字以内にしてください\n" + CONSULTATION_GUIDE
+
+# 募集文の上限。普通の求人で長い部類が2,300文字程度という仮定に、マージンを
+# 持たせた値（内訳の仮定は #29 の対応コミットを参照）。
+TEXT_MAX_LENGTH = 3000
+
+# 上限を超えたときの案内。判定を返せない経路なので、views._unavailable() と
+# 同じ「理由 / これからどうなるか / 相談先」の3段に揃え、相談先を末尾に付ける。
+# 文字数は Django の max_length バリデータが渡す params で埋めるため、上限の
+# 値をここに書き写さない。
+# %(value)s は使わないこと（募集文そのものがメッセージに載り、messages 経由で
+# cookie / session に乗る）。またこの文字列は % 補間を通るので、
+# CONSULTATION_GUIDE 側にも % を入れないこと。
+MAX_LENGTH_ERROR = (
+    "募集文が長すぎるため、判定できませんでした（%(show_value)s文字）。"
+    "%(limit_value)s文字以内にしてください。\n"
+    "仕事内容・報酬・連絡方法が書かれた部分を残して、もう一度貼り付けてください。"
+    "会社紹介や応募の手順は省いてかまいません。\n\n" + CONSULTATION_GUIDE
+)
 
 
 class JobOfferRiskAssessForm(forms.Form):
@@ -27,7 +44,7 @@ class JobOfferRiskAssessForm(forms.Form):
     # 未知のフィールドは Django のフォームが無視するので、image を付けて
     # POST されても text だけで判定され、画像は読み捨てられる。
     text = forms.CharField(  # CharField は既定で strip 済み・required=True
-        max_length=3000,
+        max_length=TEXT_MAX_LENGTH,
         widget=forms.Textarea,
         error_messages={
             "required": NO_INPUT_ERROR,

@@ -85,3 +85,18 @@ class TextareaMaxLengthTest(SimpleTestCase):
         for contact, case in CONSULTATION_CONTACTS:
             with self.subTest(contact=contact):
                 self.assertIn(contact, form.errors["text"][0])
+
+    def test_error_message_reports_the_length_and_the_limit(self):
+        """何文字だったか・何文字までかを、両方そのまま出す
+        変異テスト: メッセージから %(show_value)s / %(limit_value)s を落とす
+        """
+        message = self._form(4000).errors["text"][0]
+        self.assertIn("4000文字", message)
+        self.assertIn(f"{self.MAX_LENGTH}文字以内", message)
+
+    def test_error_message_does_not_echo_the_job_text(self):
+        """募集文そのものはメッセージに載せない
+        （messages は cookie / session に保存されるため）
+        変異テスト: メッセージに %(value)s を入れる
+        """
+        self.assertNotIn(MARKER, self._form(4000).errors["text"][0])
