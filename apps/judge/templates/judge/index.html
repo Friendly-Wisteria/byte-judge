@@ -208,12 +208,43 @@
                   <input type="hidden" name="mode" value="text" />
 
                   <label for="text" class="form-label fw-semibold">求人の募集文を貼り付け</label>
+                  {% comment %}
+                    maxlength は付けない。ブラウザは超過ぶんを黙って捨てるため、
+                    残したい末尾（連絡方法が書かれやすい場所）を貼り足す手段が
+                    なくなり、外部での編集を強いることになる。全文を入れられる
+                    ようにして、その場で削ってもらう。上限は下の文字数の表示と
+                    送信前のチェックで伝え、最後はサーバー側の max_length で
+                    止める。
+
+                    上限の数字は form から取る（ここに書くと
+                    forms.TEXT_MAX_LENGTH との二重管理になる）。
+
+                    送信した内容はそのまま戻す。長すぎて弾かれた人に貼り直しを
+                    頼まないため（判定できたときも残す。結果の「見当たらなかった
+                    項目」を見て、足りない部分を貼り足せるようにするため）。
+                  {% endcomment %}
                   <textarea
                       id="text"
                       name="text"
                       class="form-control mb-1"
+                      data-max-length="{{ form.text.field.max_length }}"
                       placeholder="例）日給5万円以上／即日現金手渡し／簡単な受け取り作業のみ／Telegramで連絡ください…"
-                  ></textarea>
+                  >{{ form.text.value|default_if_none:"" }}</textarea>
+                  {% comment %}
+                    文字数の表示。上限を超えていることと、あと何文字削れば収まる
+                    かを、送信する前に分かるようにする。
+
+                    ここに相談先は出さない。編集中はまだ何も失敗していないため、
+                    出すと身構えさせるだけで、案内の重みも薄れる。相談先が要る
+                    のは「送ったが判定を返せなかった」場面で、そちらは
+                    forms.MAX_LENGTH_ERROR が受け持つ。
+                  {% endcomment %}
+                  <div class="d-flex justify-content-end small text-body-secondary mb-1">
+                      <span id="text-count">{{ form.text.value|default_if_none:""|length }}</span>/{{ form.text.field.max_length }}文字
+                  </div>
+                  <div id="text-over-limit" class="alert alert-warning small py-2 d-none" role="alert">
+                      上限の{{ form.text.field.max_length }}文字を<span id="text-over-by">0</span>文字ぶん超えています。仕事内容・報酬・連絡方法が書かれた部分を残して、会社紹介や応募の手順などを削ってください。
+                  </div>
                   <div class="small text-body-secondary mb-3">
                       募集ページや DM の文章をそのまま貼り付けてOKです。会社名・仕事内容・連絡方法など、書かれている部分はできるだけまるごと貼り付けてください。
                   </div>
@@ -487,11 +518,33 @@
           var textForm  = document.getElementById('form-text');
           var textArea  = document.getElementById('text');
           var textError = document.getElementById('text-error');
+          var textCount = document.getElementById('text-count');
+          var textOverLimit = document.getElementById('text-over-limit');
+          var textOverBy = document.getElementById('text-over-by');
+          var textLimit = Number(textArea.getAttribute('data-max-length')) || 0;
+
+          // 上限を超えたら、文字数を赤くして「あと何文字削るか」を出す。
+          // 入力自体は止めない（止めると、残したい末尾を貼り足せなくなる）。
+          function renderTextCount() {
+            var length = textArea.value.length;
+            var over = textLimit > 0 && length > textLimit;
+            if (textCount) {
+              textCount.textContent = String(length);
+              textCount.classList.toggle('text-danger', over);
+              textCount.classList.toggle('fw-bold', over);
+            }
+            if (textOverBy) textOverBy.textContent = String(length - textLimit);
+            if (textOverLimit) textOverLimit.classList.toggle('d-none', !over);
+          }
 
           textArea.addEventListener('input', function () {
             if (textError) textError.classList.add('d-none');
             textArea.classList.remove('is-invalid');
+            renderTextCount();
           });
+
+          // 送信後に戻ってきた内容にも数を合わせる
+          renderTextCount();
 
           textForm.addEventListener('submit', function (e) {
             if (!textArea.value.trim()) {
@@ -501,6 +554,9 @@
               textArea.focus();
               return;
             }
+            // 上限超過はここで止めない。止めるとサーバーに届かず、相談先つきの
+            // 案内（forms.MAX_LENGTH_ERROR）が出る経路が消える。判定を返せない
+            // ときは必ず相談先を添える約束を、テストできるサーバー側に置く。
             startOverlay(textForm, [
               '募集文を読み取り中…',
               'あやしいサインを照合中…',
@@ -531,6 +587,8 @@
               b.disabled = false;
               b.textContent = 'このバイトをチェック';
             });
+            // bfcache から戻ると textarea の中身も復元されるため、数を合わせ直す
+            renderTextCount();
           });
         })();
     </script>

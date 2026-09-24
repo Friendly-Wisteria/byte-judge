@@ -15,7 +15,7 @@ from django.conf import settings
 from django.test import SimpleTestCase, TestCase, override_settings
 
 from ..consultation import CONSULTATION_CONTACTS, CONSULTATION_HEADING
-from ..forms import JobOfferRiskAssessForm
+from ..forms import TEXT_MAX_LENGTH, JobOfferRiskAssessForm
 from .helpers import JOB_TEXT, MARKER
 
 
@@ -43,9 +43,15 @@ class OversizedTextIsRefusedBeforeTheViewTests(TestCase):
     def test_the_user_currently_sees_djangos_default_page(self):
         """現状の固定：アプリの画面ではなく、Django 既定の 400 が出ている。
 
-        つまり相談先も入力の直し方も届いていない。利用者向けの案内
-        （handler400 か、送信前の長さ制限）を用意したら、このテストは
-        その案内を確かめる形に書き換える。
+        送信前の長さ制限（文字数の表示）とフォームの max_length を入れたため、
+        通常の利用でこの 400 に届くことはなくなった。ここに来るのはテキスト欄
+        に約29万文字（DATA_UPLOAD_MAX_MEMORY_SIZE を urlencoded で超える量）を
+        送った場合だけで、非テキストの巨大な POST は 200 でアプリの画面が返る
+        （ファイル部分にこの上限は効かず、画像フィールドも無いため読み捨て）。
+
+        handler400 を用意するかは、画像入力の再開と合わせて判断する。この上限は
+        画像が捨てられたことの検知の前提でもあり（test_image_input.py の
+        test_data_limit_stays_within_the_file_memory_limit）、単独で動かせない。
         """
         self.assertNotContains(
             self._post_oversized_text(), "バイトジャッジ", status_code=400
@@ -100,3 +106,61 @@ class TextareaMaxLengthTest(SimpleTestCase):
         変異テスト: メッセージに %(value)s を入れる
         """
         self.assertNotIn(MARKER, self._form(4000).errors["text"][0])
+
+
+@override_settings(VIEW_TEST_MODE=True)
+class TheInputIsHandedBackTests(TestCase):
+    """弾かれても貼り直しにならないこと、上限が HTML 側にも出ていることの検証。
+
+    入力欄を空に戻してしまうと、「短くしてもう一度」と案内しても、短くする元の
+    文章が利用者の手元に無い。maxlength のほうは、送信前に止めることで無駄な
+    往復をなくすためのもの（超過ぶんは黙って捨てられるため、文字数の表示と
+    セットで意味を持つ。その表示は JS なのでここでは検証できない）。
+    """
+
+    def test_the_submitted_text_comes_back_in_the_textarea(self):
+        """長すぎて弾かれても、送った募集文はそのまま入力欄に戻る
+        変異テスト: textarea の中身を空に戻す
+        """
+        response = self.client.post("/", {"mode": "text", "text": MARKER + "あ" * 4000})
+        self.assertContains(response, MARKER)
+
+    def test_the_text_survives_a_successful_judgment(self):
+        """判定できたときも残す（見当たらなかった項目を貼り足せるようにするため）
+        変異テスト: 上と同じ
+        """
+        response = self.client.post("/", {"mode": "text", "text": JOB_TEXT})
+        self.assertContains(response, MARKER)
+
+    def test_the_textarea_does_not_cap_the_input(self):
+        """textarea に maxlength を付けない
+
+        ブラウザは超過ぶんを黙って捨てるため、上限で止めると、残したい末尾
+        （連絡方法が書かれやすい場所）を貼り足す手段がなくなる。3,000文字に
+        絞る作業のために外部のエディタを開かせることになるので、入力自体は
+        止めず、文字数の表示とサーバー側の max_length で受ける。
+        変異テスト: textarea に maxlength を付ける
+        """
+        self.assertNotContains(self.client.get("/"), "maxlength")
+
+    def test_the_consultation_guide_reaches_the_page(self):
+        """上限超過で判定を返せないときも、相談先が画面に出る
+
+        フォーム単体の検証（TextareaMaxLengthTest）はメッセージの文字列までしか
+        見ないため、画面に届いたかはこちらで見る。なお送信前に JS で止めると
+        この経路ごと消えるが、テストに JS はいないので検知できない。だから
+        上限超過は JS で止めない。
+        変異テスト: MAX_LENGTH_ERROR から CONSULTATION_GUIDE を外す
+        """
+        response = self.client.post("/", {"mode": "text", "text": "あ" * 4000})
+        for contact, _ in CONSULTATION_CONTACTS:
+            with self.subTest(contact=contact):
+                self.assertContains(response, contact)
+
+    def test_the_limit_reaches_the_html(self):
+        """文字数の表示が使う上限は、forms の max_length から取る
+        変異テスト: data-max-length を数字で書く / 落とす
+        """
+        self.assertContains(
+            self.client.get("/"), f'data-max-length="{TEXT_MAX_LENGTH}"'
+        )
