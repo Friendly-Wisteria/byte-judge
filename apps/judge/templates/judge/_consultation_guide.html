@@ -1,0 +1,10 @@
+{% comment %}
+  相談先の案内。文言は consultation.py が出どころで、ここは見せ方だけを持つ。
+  番号と用途を強調タグで区切らないこと。文字列で照合できるようにするため。
+{% endcomment %}
+<p class="fw-bold mb-2">{{ heading }}</p>
+<ul>
+    {% for name, when in contacts %}
+    <li>{{ name }}（{{ when }}）</li>
+    {% endfor %}
+</ul>
