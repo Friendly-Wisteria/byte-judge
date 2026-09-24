@@ -8,19 +8,11 @@ from django.views.decorators.debug import sensitive_post_parameters, sensitive_v
 from django.views.generic import FormView, TemplateView
 
 from . import quota
+from .consultation import CONSULTATION_GUIDE
 from .forms import JobOfferRiskAssessForm
 from .service import AssessmentError, job_offer_risk_assess
 
 logger = logging.getLogger(__name__)
-
-# 判定を返せないときに必ず添える相談先。判定が止まっていても、相談先の情報だけは
-# 届ける必要がある（危険な求人を前にした人を、案内なしで締め出さない）。
-# 上限・API 障害・拒否・パース失敗のどの経路でも、これを末尾に付ける。
-CONSULTATION_GUIDE = (
-    "不安なときは、ひとりで抱えずに相談してください。\n"
-    "・警察相談専用ダイヤル #9110（犯罪かもしれない、と思ったとき）\n"
-    "・消費者ホットライン 188（いやや）（お金を払ってしまったとき）"
-)
 
 # 判定不可の案内であることをテンプレートに伝える印。入力の直し方を案内する
 # バリデーションエラーとは見え方を変えるために使う。
