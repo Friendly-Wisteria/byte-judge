@@ -14,6 +14,7 @@ from pathlib import Path
 
 import environ
 from django.contrib.messages import constants as messages
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -91,27 +92,37 @@ if not DEBUG:
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
-# 永続ディスクのない本番環境で、Daily run countが崩壊しないようにするために、
-# 本番環境では環境変数のDATABESE_URL設定を必須にする
 
-# Cloud Run + Neonでのデプロイ例
-# 本番（Cloud Run）は Neon の PostgreSQL を DATABASE_URL で受け取る。未設定の
-# ときは手元の SQLite にフォールバックするので、開発と CI の手順は変わらない。
+# 本番（DEBUG=False）では DATABASE_URL の明示を必須にし、未設定なら起動させない。
+# 永続ディスクの無い環境（Cloud Run など）では、フォールバック先の SQLite にも
+# 例外を出さずに書けてしまう。その状態で動くと DailyUsage がインスタンスごと
+# （かつ再起動ごと）に分かれ、SITE_DAILY_LIMIT の歯止めが静かに外れるため、
+# 設定漏れは起動時に止める。
 #
-# Cloud Run には永続ディスクが無く、DATABASE_URL が漏れたまま起動すると
-# DailyUsage がインスタンスごと（かつ再起動ごと）に分かれ、SITE_DAILY_LIMIT の
-# 歯止めが効かなくなる。デプロイ時には必ず渡すこと。
+# 止めるのは「未設定」だけで、エンジンの種類は見ない。永続ディスクを持つ環境
+# （Fly.io のボリュームなど）で SQLite を選ぶ構成は、パスを明示すれば通る。
+# 意図した選択は妨げず、書き忘れだけを塞ぐ。
 #
-# CONN_MAX_AGE は既定（0：リクエストごとに接続）のままにしている。Neon は
-# 5分で自動サスペンドするため接続を使い回しても切れている可能性があり、かつ
-# 1リクエストあたりの DB 操作は DailyUsage の1行だけで、判定そのものにかかる
-# 時間（数秒〜）に比べれば接続の往復は無視できるため。
+# system check ではなくここで落とすのは、gunicorn が system check を走らせない
+# ため。settings で落とせばワーカーが起動せず、壊れた設定がトラフィックを
+# 受け取らない（Cloud Run なら新しいリビジョンが ready にならない）。
+if not DEBUG and not env.str("DATABASE_URL", default=""):
+    raise ImproperlyConfigured(
+        "DEBUG=False では DATABASE_URL の設定が必須です。"
+        "マネージドな PostgreSQL の接続文字列か、永続ディスク上の SQLite の"
+        "パス（例: sqlite:////data/db.sqlite3）を指定してください。"
+        "開発用 SQLite への暗黙のフォールバックは、SITE_DAILY_LIMIT の"
+        "歯止めが静かに外れるため本番では行いません。"
+    )
+
+# CONN_MAX_AGE は既定（0：リクエストごとに接続）のままにしている。サーバーレス
+# Postgres（Neon など）は数分で自動サスペンドするため接続を使い回しても切れて
+# いる可能性があり、かつ1リクエストあたりの DB 操作は DailyUsage の1行だけで、
+# 判定そのものにかかる時間（数秒〜）に比べれば接続の往復は無視できるため。
 DATABASES = {
     "default": env.db_url(
         "DATABASE_URL",
-        default=(
-            f"sqlite:///{BASE_DIR / 'db.sqlite3'}" if DEBUG else environ.Env.NOTSET
-        ),
+        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
     )
 }
 
