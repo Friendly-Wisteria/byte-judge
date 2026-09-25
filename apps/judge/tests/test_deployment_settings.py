@@ -7,15 +7,21 @@
 adminについては、現時点では削除し、後でAPI利用状況の追跡のために実装予定
 """
 
+import importlib.util
+import os
 import unittest
+from unittest import mock
 
 import environ
 from django.conf import settings
 from django.core import checks
+from django.core.exceptions import ImproperlyConfigured
 from django.core.management import call_command
 from django.test import Client, SimpleTestCase, TestCase, override_settings
 
 from .helpers import JOB_TEXT
+
+SETTINGS_MODULE = "config.settings"
 
 
 @override_settings(VIEW_TEST_MODE=True)
@@ -122,6 +128,73 @@ class HttpsRedirectIsWiredForTheProxyTests(SimpleTestCase):
             )
 
         self.assertEqual(response.status_code, 200)
+
+
+class DatabaseURLSettingsTests(TestCase):
+    """本番環境において、DATABASE_URLが環境変数での明示的な設定が必須であることの検証。
+
+    永続ディスクのない環境で、DailyUsageのカウントアップが意味をなさなるなることを防ぐための仕様
+    """
+
+    def load_fresh_settings(self, env_overrides, remove=()):
+        """環境変数を差し替えた状態で、settingsを別モジュールとして新規ロードする
+
+        `@override_settings()`デコレーターでは、settings.pyに読み込んだ後の値を書き換えるので、
+        .envごとテスト用に用意し直した上で、それを前提にsettings.pyを走らせる必要がある。
+        """
+        origin = importlib.util.find_spec(SETTINGS_MODULE).origin
+        spec = importlib.util.spec_from_file_location("_settings_under_test", origin)
+        module = importlib.util.module_from_spec(spec)
+
+        with mock.patch.dict(os.environ, env_overrides):
+            for key in remove:
+                os.environ.pop(key, None)
+            with mock.patch.object(environ.Env, "read_env"):
+                spec.loader.exec_module(module)
+        return module
+
+    def test_allow_no_database_url_for_debug_environment(self):
+        """開発環境であれば、DATABASE_URLが未設定の場合デフォルトにフォールバックする。"""
+        s = self.load_fresh_settings(
+            {"DEBUG": "True", "SECRET_KEY": "test"},
+            remove=("DATABASE_URL",),
+        )
+        db = s.DATABASES["default"]
+        self.assertEqual(db["ENGINE"], "django.db.backends.sqlite3")
+        self.assertEqual(db["NAME"], str(s.BASE_DIR / "db.sqlite3"))
+
+    def test_denies_no_database_url_for_prod_environment(self):
+        """本番環境であれば、DATABASE_URLが未設定の場合ImproperlyConfiguredを発する"""
+        with self.assertRaisesRegex(ImproperlyConfigured, "DATABASE_URL"):
+            self.load_fresh_settings(
+                {"DEBUG": "False", "SECRET_KEY": "test"},
+                remove=("DATABASE_URL",),
+            )
+
+    def test_production_accepts_database_url(self):
+        """本番環境では、SQLite3もPostgreSQLも通す。"""
+        cases = [
+            (
+                "postgresql",
+                "postgres://user:pass@localhost:5432/app",
+                "django.db.backends.postgresql",
+                "app",
+            ),
+            (
+                "sqlite3",
+                "sqlite:////tmp/prod.sqlite3",
+                "django.db.backends.sqlite3",
+                "/tmp/prod.sqlite3",
+            ),
+        ]
+        for label, url, engine, name in cases:
+            with self.subTest(label):
+                s = self.load_fresh_settings(
+                    {"DEBUG": "False", "SECRET_KEY": "test", "DATABASE_URL": url},
+                )
+                db = s.DATABASES["default"]
+                self.assertEqual(db["ENGINE"], engine)
+                self.assertEqual(db["NAME"], name)
 
 
 class MigrationsMatchTheModelsTests(TestCase):
