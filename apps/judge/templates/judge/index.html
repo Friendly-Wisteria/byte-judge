@@ -531,7 +531,12 @@
           // のはカウンタの表示だけ。だから JS のテストは入れていない（#20 の判断）。
           // 表示以外のことを始めたら、その判断はやり直す。
           function renderTextCount() {
-            var length = textArea.value.length;
+            // 数えるのはコードポイント。value.length は UTF-16 のコード単位を
+            // 返すため、絵文字など BMP 外の文字を2と数え、サーバー側の len() より
+            // 多く出る（#61）。Intl.Segmenter（書記素クラスタ）で数える手もあるが、
+            // それだと家族絵文字などが1になり、今度は len() とずれる。合わせる
+            // 相手は上限を判定しているサーバー側の数え方。
+            var length = Array.from(textArea.value).length;
             var over = textLimit > 0 && length > textLimit;
             if (textCount) {
               textCount.textContent = String(length);
