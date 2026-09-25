@@ -289,16 +289,20 @@ ALLOWED_HOSTS=example.com,www.example.com
 
 ### 3. データベースを設定する（`DATABASE_URL`）
 
-本番のデータベースは PostgreSQL です。環境変数 `DATABASE_URL` を設定すると
-その接続先を使い、未設定のときは開発用の SQLite にフォールバックします。
+SQLite3 と PostgreSQL は、本番環境で使用できることをテストで固定しています。
 
 ```dotenv
+# SQLite3の例
+DATABASE_URL=sqlite:////tmp/prod.sqlite3
+
+# PostgreSQLの例
 DATABASE_URL=postgresql://<user>:<password>@<host>/<dbname>?sslmode=require
 ```
 
-⚠️ **永続ディスクの無い環境（Cloud Run など）で設定が漏れると、上限の歯止めが
-効かなくなります。** `DailyUsage` がインスタンスごと・再起動ごとに分かれ、
-`SITE_DAILY_LIMIT` が意味を成さなくなるためです。
+⚠️ 本番環境では、環境変数での`DATABASE_URL`の明示的な設定が必須です。
+デフォルトへのフォールバックは使用できません。
+
+- 永続ディスクのない環境での設定漏れによって、`DailyUsage` がインスタンスごと・再起動ごとに分かれ、`SITE_DAILY_LIMIT` が意味を成さなくなる事故に対するフェイルセーフです。
 
 - 保存するのは `DailyUsage`（日付と件数）だけなので、移行の負担はありません。
 - SQLite は書き込み時にデータベース全体をロックするため、gunicorn などで
