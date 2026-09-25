@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from unittest import mock
 
 from django.conf import settings
-from django.db import IntegrityError, connection
+from django.db import DatabaseError, IntegrityError, connection
 from django.http import HttpResponse
 from django.test import Client, RequestFactory, TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
@@ -286,6 +286,26 @@ class SiteDailyLimitTests(TestCase):
         )
         self.assertNotIn(MARKER, str(list(DailyUsage.objects.values())))
 
+    def test_a_database_error_stops_the_api_call(self):
+        """DB 障害のときは、API を叩かずにサイト側の障害として案内すること。
+
+        件数を記録できない状態で投げ続けると、歯止めが無いまま費用だけが出る。
+        """
+        with mock.patch.object(
+            DailyUsage.objects,
+            "get_or_create",
+            side_effect=DatabaseError("connection lost"),
+        ):
+            response, assess = self._judge(Client())
+
+        self.assertIsNone(response.context.get("result"))
+        self.assertContains(response, "サイト側の問題なので")
+        # 上限で埋まったときの案内と混ざっていないこと（原因の取り違えを防ぐ）
+        self.assertNotContains(response, "あなたの使いすぎではありません")
+        assert_consultation_is_offered(self, response)
+        # 枠を取れなかった判定は API に届かない（＝費用が出ない）
+        assess.assert_not_called()
+
 
 @override_settings(SITE_DAILY_LIMIT=2)
 class SiteCounterHoldsUnderContentionTests(TestCase):
@@ -340,6 +360,18 @@ class SiteCounterHoldsUnderContentionTests(TestCase):
             self.assertIsNone(failure_reason)
 
         self.assertEqual(DailyUsage.objects.get().count, 1)
+
+    def test_a_database_error_is_reported_as_the_reason(self):
+        """DB に触れないときは、確保を諦めて理由を DATABASE_ERROR で返すこと。"""
+        with mock.patch.object(
+            DailyUsage.objects,
+            "get_or_create",
+            side_effect=DatabaseError("connection lost"),
+        ):
+            is_reserved, failure_reason = quota.reserve_site_slot(self.NOW)
+
+        self.assertFalse(is_reserved)
+        self.assertEqual(failure_reason, quota.SiteSlotReservationError.DATABASE_ERROR)
 
     def test_rows_older_than_the_retention_window_are_deleted(self):
         """古い行は、その日の最初の確保のときに消えること。"""
