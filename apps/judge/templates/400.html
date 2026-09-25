@@ -1,0 +1,46 @@
+{% extends "judge/base.html" %}
+{% load consultation_tags %}
+{% comment %}
+  素の 400 ページの差し替え（#50）。
+
+  この画面は「リクエストを解釈できなかった」場合に出る。Django が view に
+  届く前に弾くため、views 側の案内（_unavailable）には載らない。
+
+  出どころは1つではない。ホスト名の設定ミス（DisallowedHost。利用者に非は
+  ない）と、極端に大きいテキストの送信（RequestDataTooBig。送った内容が
+  原因）が、同じこの画面に来る。そのため 500.html のように「あなたの操作や
+  入力が原因ではありません」と言い切らず、原因を断定しない書き方にする。
+
+  django.views.defaults.bad_request は context を渡さずに render するため、
+  messages・csrf_token を参照する記述は使えない。request は渡るが、参照は
+  しないこと。DisallowedHost の最中に request.get_host() に触ると、同じ例外
+  がもう一度出る。
+
+  相談先は consultation.py が出どころで、consultation_guide タグで描画する。
+{% endcomment %}
+
+{% block title %}送信を受け取れませんでした - バイトジャッジ{% endblock %}
+
+{% block content %}
+    <h1 class="fw-bold h4 mb-3">送信を受け取れませんでした</h1>
+    {% comment %}
+      判定不可の案内（views の _unavailable）と同じ3段に揃える。
+      理由 / これからどうなるか / 相談先。
+    {% endcomment %}
+    <div class="alert alert-warning" role="alert">
+        送信された内容を、サイトが受け取れませんでした。送った文章が極端に長いか、
+        サイト側の設定に問題がある可能性があります。<br>
+        判定は行われていません。
+    </div>
+    <p>
+        長い文章を送った場合は、募集文の部分だけを貼り付けると通ることがあります。
+        それでも同じ画面が出る場合は、時間をおいてからお試しください。
+    </p>
+    {% consultation_guide %}
+    <p class="text-body-secondary mb-0 mt-3">
+        <small>入力した文章は保存されないため、もう一度貼り付けてください。</small>
+    </p>
+    <p class="border-top pt-3 mt-4 mb-0">
+        <a href="{% url 'judge:index' %}">最初のページに戻る</a>
+    </p>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "judge/base.html" %}
+{% load consultation_tags %}
+{% comment %}
+  CSRF 検証に失敗したときのページ（#50）。
+
+  Django の csrf_failure は、この名前のテンプレートがあればそれを使う
+  （CSRF_FAILURE_VIEW の設定は要らない）。
+
+  ⚠️ 失敗の理由はテンプレートに渡らない。csrf_failure はカスタムテンプレート
+  を見つけると t.render(request=request) としか呼ばず、no_cookie / reason を
+  渡すのは既定のテンプレートを使うときだけ。理由は Cookie の欠落だけでなく、
+  トークンの不一致や Origin / Referer の不一致（逆プロキシの設定ミス。#43）も
+  あるため、原因を断定しないこと。
+
+  Cookie を恒常的にブロックしている人は、再送しても同じ結果になる。「許可して
+  もう一度」で終わらせず、相談先が必ず目に入る構成にする。
+
+  この経路では、送った文章を入力欄に戻せない（#49 の約束がここだけ守れない）。
+  貼り直しが要ることを、文面で伝える。
+
+  500.html と同じ制約で書く（request は渡るが参照しない）。
+{% endcomment %}
+
+{% block title %}判定を送信できませんでした - バイトジャッジ{% endblock %}
+
+{% block content %}
+    <h1 class="fw-bold h4 mb-3">判定を送信できませんでした</h1>
+    {% comment %}
+      判定不可の案内（views の _unavailable）と同じ3段に揃える。
+      理由 / これからどうなるか / 相談先。
+    {% endcomment %}
+    <div class="alert alert-warning" role="alert">
+        送信元を確かめられなかったため、判定を受け付けられませんでした。<br>
+        ブラウザが Cookie を受け入れない設定になっているか、送信のあいだに
+        必要な情報が失われた可能性があります。判定は行われていません。
+    </div>
+    <p>
+        このサイトの Cookie を受け入れる設定にしてから、もう一度お試しください。
+        設定を変えられない端末では、判定を利用できません。
+        なお Cookie に入れているのは1日の判定回数と送信元の確認だけで、
+        入力した文章は含みません（<a href="{% url 'judge:privacy' %}">プライバシーポリシー</a>）。
+    </p>
+    {% consultation_guide %}
+    <p class="text-body-secondary mb-0 mt-3">
+        <small>入力した文章は保存されないため、もう一度貼り付けてください。</small>
+    </p>
+    <p class="border-top pt-3 mt-4 mb-0">
+        <a href="{% url 'judge:index' %}">最初のページに戻る</a>
+    </p>
+{% endblock %}
