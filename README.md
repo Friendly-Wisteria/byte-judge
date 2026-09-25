@@ -49,8 +49,8 @@
 | バリデーション | Pydantic 2 |
 | 画像処理 | Pillow |
 | 設定管理 | django-environ（`.env`） |
-| データベース | 開発は SQLite / 本番は PostgreSQL（Neon）。保存するのは1日の判定件数のみ |
-| 実行環境 | 開発は `runserver` / 本番は gunicorn（Google Cloud Run） |
+| データベース | 開発は SQLite / 本番は PostgreSQL。保存するのは1日の判定件数のみ |
+| 実行環境 | 開発は `runserver` / 本番は gunicorn |
 | フロントエンド | Django テンプレート + Bootstrap |
 | パッケージ管理 | uv |
 
@@ -367,9 +367,9 @@ HSTS の `includeSubDomains` と `preload` は、どちらも取り消しが効�
 
 ## Google Cloud Run + Neon へのデプロイ
 
-公開はこの構成で行っています。永続ディスクを持たない代わりに、使われていない
-あいだの費用がほぼ出ない組み合わせです。他の PaaS へ移す場合も、上の
-「本番環境にデプロイする場合の必須設定」を満たせば同じように動きます。
+この構成で実際に動くことを確認しています。永続ディスクを持たない代わりに、
+使われていないあいだの費用がほぼ出ない組み合わせです。他の PaaS へ移す場合も、
+上の「本番環境にデプロイする場合の必須設定」を満たせば同じように動きます。
 
 ### 1. Neon（PostgreSQL）
 
