@@ -150,3 +150,14 @@ class TheErrorRoutesReachTheReplacedPagesTests(SimpleTestCase):
             views.bad_request(
                 RequestFactory().get("/"), ValueError("not a host problem")
             )
+
+    def test_an_unknown_url_leads_back_to_the_form(self):
+        """存在しない URL は、エラーページを見せずに入力画面へ送ること。
+
+        ここに来る人がやることは結局「最初から入力する」なので、英語の
+        エラーページを挟まない。
+        変異テスト: handler404 を外す
+        """
+        response = self.client.get("/no-such-page/")
+
+        self.assertRedirects(response, "/", status_code=302)
