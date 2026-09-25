@@ -91,7 +91,10 @@ if not DEBUG:
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
+# 永続ディスクのない本番環境で、Daily run countが崩壊しないようにするために、
+# 本番環境では環境変数のDATABESE_URL設定を必須にする
 
+# Cloud Run + Neonでのデプロイ例
 # 本番（Cloud Run）は Neon の PostgreSQL を DATABASE_URL で受け取る。未設定の
 # ときは手元の SQLite にフォールバックするので、開発と CI の手順は変わらない。
 #
@@ -106,7 +109,9 @@ if not DEBUG:
 DATABASES = {
     "default": env.db_url(
         "DATABASE_URL",
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        default=(
+            f"sqlite:///{BASE_DIR / 'db.sqlite3'}" if DEBUG else environ.Env.NOTSET
+        ),
     )
 }
 
