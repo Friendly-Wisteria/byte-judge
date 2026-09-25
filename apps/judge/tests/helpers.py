@@ -25,6 +25,34 @@ IMAGE_PAUSED = "画像（スクリーンショット）入力は停止中。再�
 MARKER = "ZZMARKER7f3a9cZZ"
 JOB_TEXT = f"日給5万円・即日手渡し・Telegramで連絡ください 合言葉:{MARKER}"
 
+# 利用者に見せない技術的な語。判定不可の案内（文言）と、差し替えたエラー
+# ページ（400 / 403 / 500）で検査する。
+FORBIDDEN_TECHNICAL_TOKENS = (
+    "AssessmentError",
+    "UNAVAILABLE",
+    "FAILED",
+    "Traceback",
+    "Exception",
+    "None",
+    "429",
+    "402",
+    "refusal",
+    "max_tokens",
+    "stop_reason",
+    "API",
+)
+
+# エラーページに固有の危うさ。500 は DB 障害で、400 はホスト名の設定ミスで
+# 出るため、接続先や設定値が載っていないことまで見る。
+FORBIDDEN_ON_THE_ERROR_PAGE = FORBIDDEN_TECHNICAL_TOKENS + (
+    "DatabaseError",
+    "OperationalError",
+    "DATABASE_URL",
+    "SECRET_KEY",
+    "psycopg",
+    "sqlite",
+)
+
 
 def assert_consultation_is_offered(test, response):
     """判定不可の案内に、相談先が両方出ていることを確かめる。
