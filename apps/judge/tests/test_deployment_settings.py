@@ -130,14 +130,16 @@ class HttpsRedirectIsWiredForTheProxyTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
 
 
-class DatabaseURLSettingsTests(TestCase):
-    """本番環境において、DATABASE_URLが環境変数での明示的な設定が必須であることの検証。
+class DatabaseURLSettingsTests(SimpleTestCase):
+    """本番環境では、DATABASE_URL の明示的な設定が必須であることの検証。
 
-    永続ディスクのない環境で、DailyUsageのカウントアップが意味をなさなるなることを防ぐための仕様
+    永続ディスクのない環境では、フォールバック先の SQLite にも例外を出さずに
+    書けてしまう。その状態で動くと DailyUsage がインスタンスごと・再起動ごとに
+    分かれ、SITE_DAILY_LIMIT の歯止めが静かに外れるため、起動時に止める。
     """
 
-    def load_fresh_settings(self, env_overrides, remove=()):
-        """環境変数を差し替えた状態で、settingsを別モジュールとして新規ロードする
+    def _load_fresh_settings(self, env_overrides, remove=()):
+        """環境変数を差し替えた状態で、settingsを別モジュールとして新規ロードする。
 
         `@override_settings()`デコレーターでは、settings.pyに読み込んだ後の値を書き換えるので、
         .envごとテスト用に用意し直した上で、それを前提にsettings.pyを走らせる必要がある。
@@ -155,7 +157,7 @@ class DatabaseURLSettingsTests(TestCase):
 
     def test_allow_no_database_url_for_debug_environment(self):
         """開発環境であれば、DATABASE_URLが未設定の場合デフォルトにフォールバックする。"""
-        s = self.load_fresh_settings(
+        s = self._load_fresh_settings(
             {"DEBUG": "True", "SECRET_KEY": "test"},
             remove=("DATABASE_URL",),
         )
@@ -164,9 +166,9 @@ class DatabaseURLSettingsTests(TestCase):
         self.assertEqual(db["NAME"], str(s.BASE_DIR / "db.sqlite3"))
 
     def test_denies_no_database_url_for_prod_environment(self):
-        """本番環境であれば、DATABASE_URLが未設定の場合ImproperlyConfiguredを発する"""
+        """本番環境であれば、DATABASE_URLが未設定の場合ImproperlyConfiguredを発する。"""
         with self.assertRaisesRegex(ImproperlyConfigured, "DATABASE_URL"):
-            self.load_fresh_settings(
+            self._load_fresh_settings(
                 {"DEBUG": "False", "SECRET_KEY": "test"},
                 remove=("DATABASE_URL",),
             )
@@ -189,7 +191,7 @@ class DatabaseURLSettingsTests(TestCase):
         ]
         for label, url, engine, name in cases:
             with self.subTest(label):
-                s = self.load_fresh_settings(
+                s = self._load_fresh_settings(
                     {"DEBUG": "False", "SECRET_KEY": "test", "DATABASE_URL": url},
                 )
                 db = s.DATABASES["default"]
