@@ -38,6 +38,10 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["127.0.0.1", "localhost"])
 
 # Application definition
 
+# admin は入れていない（#32 で削除した）。公開 URL にログイン口を作らないため。
+# 費用と実行件数をブラウザから見るために戻す余地は残してあり（#39）、そのときに必要な
+# auth / contenttypes と、下の AuthenticationMiddleware・auth context processor は
+# そのままにしている。admin が無いので使われていないように見えるが、消さないこと。
 INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.contenttypes",

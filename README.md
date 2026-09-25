@@ -6,12 +6,16 @@
 
 > ⚠️ **免責**：本ツールの判定は LLM による**参考情報**であり、法的・最終的な判断ではありません。「危険な兆候なし」と表示された場合でも危険な求人である可能性は残ります。少しでも不安を感じたら、応募・連絡を行う前に、警察相談専用電話 **#9110** や消費生活センター **188（いやや）** などの正規の窓口に相談してください。
 
+**このリポジトリは、コードの公開とメンテナンスのみを行っています。作者が運営する公開サイトはありません。**
+使うには、ご自身でセルフホストしてください（→ [セルフホスト・再配布される方へ](#セルフホスト再配布される方へ重要)）。
+
 ---
 
 ## 主な機能
 
 - **貼り付けるだけ**：SNS・求人サイトの募集文をそのまま貼り付け
 - **危険度スコア（0〜100）と3段階ラベル**：`危険` / `要注意` / `危険な兆候なし`
+  （判定に足る情報が入力に無いときは、判定名を出さず `情報不足` として貼り足しを案内）
 - **根拠つきシグナル表示**：「異常な高額報酬」「秘匿アプリへの誘導」など、検出した兆候ごとに深刻度（高/中/低）と判断根拠を提示
 - **推奨アクションの提示**：ユーザーが次に取るべき行動をわかりやすい「ですます調」で案内
 - **構造化出力**：Claude の structured outputs（Pydantic スキーマ）で JSON を強制し、パース失敗時は結果を表示せずエラー処理
@@ -47,11 +51,11 @@
 | フレームワーク | Django 6.1 |
 | LLM | Anthropic Claude（`anthropic`） |
 | バリデーション | Pydantic 2 |
-| 画像処理 | Pillow |
+| 画像処理 | Pillow（画像入力は停止中。起動時のピクセル数上限の設定にのみ使用） |
 | 設定管理 | django-environ（`.env`） |
-| データベース | 開発は SQLite / 本番は PostgreSQL。保存するのは1日の判定件数のみ |
+| データベース | PostgreSQL / SQLite のどちらも可（`DATABASE_URL` で指定。本番では明示が必須）。保存するのは1日の判定件数のみ |
 | 実行環境 | 開発は `runserver` / 本番は gunicorn |
-| フロントエンド | Django テンプレート + Bootstrap |
+| フロントエンド | Django テンプレート + Bootstrap（CSS / JS は jsDelivr の CDN から読み込み。SRI 付き） |
 | パッケージ管理 | uv |
 
 ---
@@ -99,25 +103,37 @@ SITE_DAILY_LIMIT=11
   **`claude-haiku-4-5`（最安）は非推奨です。** 2026-09-22 に実施した
   サンプルデータでの比較テストで、危険な求人の見落としが 1 件ありました
   （Sonnet 5 は 0 件）。費用より見落としの少なさを優先してください。
-  また **`claude-fable-5` / `claude-mythos-5` は使用しないでください**（後述）。
+  また **Anthropic が Covered Models に指定しているモデル**
+  （`claude-fable-5` / `claude-fable-5-1` / `claude-mythos-5` / `claude-mythos-5-1` など）
+  **は使用しないでください**（後述）。
 - `ALLOWED_HOSTS` は本番環境では実際のドメインに変更してください（例：`ALLOWED_HOSTS=example.com,www.example.com`）。
 - `DEBUG=True` は、ローカル開発では入れてください。未設定だと本番扱いになり、
   `DATABASE_URL` の明示が必須になるため、次の手順の `manage.py migrate` が
   `ImproperlyConfigured` で止まります（本番での設定漏れを防ぐガードです。
   「本番環境にデプロイする場合の必須設定」の 3 を参照）。
-- `PERSON_DAILY_LIMIT` は 1人あたり、`SITE_DAILY_LIMIT` はサイト全体の、1日の判定
-  回数です。前者は連打への摩擦（Cookie で数えるため、消せば回避できます）、後者は
-  月額の利用上限を1日で使い切られないための枠です。
+- `PERSON_DAILY_LIMIT` と `SITE_DAILY_LIMIT` は、1日に判定できる件数の上限です。
+  それぞれ役割が違います。
+
+  - `PERSON_DAILY_LIMIT`（1人あたり）は、連打への摩擦です。Cookie で数えるため、
+    消せば回避できます。
+  - `SITE_DAILY_LIMIT`（サイト全体）は、月額の利用上限を1日で使い切られないための枠です。
+
+  **どちらの既定値も、まず動かして試す段階を想定した小さい値です。** とくに
+  `SITE_DAILY_LIMIT` の 11件/日 は、試している間に費用が想定外に膨らまないよう
+  最小限に寄せた値で、公開して使ってもらう規模には足りません。下の見積もりを
+  踏まえて、契約している月額上限と想定する利用者数に合わせて決めてください。
+
   1件あたりの費用は、固定の判定プロンプト（約6,300トークン）がプロンプト
   キャッシュに当たるかどうかで2倍以上変わります。実測は $0.019（連続実行・
-  ほぼ全部命中）〜 $0.041（毎回ミス）で、既定の 11件/日 は毎回ミスする最悪の
-  想定でも31日で約 $14 に収まる値です。実際の命中率は起動中に出る
+  ほぼ全部命中）〜 $0.041（毎回ミス）です。既定の 11件/日 は、毎回ミスする
+  最悪の想定でも31日で約 $14 に収まる値です。実際の命中率は、起動中に出る
   `token_usage` ログ（`cache_read` と `cache_write`）で測れます。
+
   ただしこの実測は、ふだんの長さの募集文でのものです。入力の上限は10,000文字
-  （`apps/judge/forms.py` の `TEXT_MAX_LENGTH`）なので、求人サイトのページを
-  雛形ごと貼り付けるなどして上限いっぱいが続くと、その入力ぶん（目安で1万
-  トークン＝$0.02 程度）が上乗せされ、1件あたりの費用は上振れします。
-  契約している月額上限に合わせて調整してください。
+  （`apps/judge/forms.py` の `TEXT_MAX_LENGTH`）なので、求人サイトのページを雛形
+  ごと貼り付けるなどして上限いっぱいが続くと、その入力ぶん（目安で1万トークン＝
+  $0.02 程度）が上乗せされ、1件あたりの費用は上振れします。
+
 ### 3. データベースの初期化と起動
 
 ```bash
@@ -142,26 +158,33 @@ uv run python manage.py runserver
 ```
 apps/judge/
 ├── views.py          # 入力フォームと結果表示（FormView）
+├── urls.py           # トップ（/）とプライバシーポリシー（/privacy/）
 ├── forms.py          # 画像サイズ/解像度の検証（decompression bomb 対策含む）
 ├── service.py        # Claude API 呼び出し・プロンプト整形・結果パース
-├── schema.py         # RiskReportSchema（score / level / signals / advice / has_enough_info / missing_info）
+├── schema.py         # RiskReportSchema（score / level / summary / signals / advice / has_enough_info / missing_info）
 ├── quota.py          # 判定回数の上限（1人＝署名付きCookie / 全体＝日次カウンタ）
 ├── models.py         # DailyUsage（日付と件数だけの日次カウンタ）
 ├── fixtures.py       # VIEW_TEST_MODE 用の固定サンプル
+├── evalset/          # 判定精度の評価（ケース集 cases.toml は非公開）
 ├── tests/            # 回帰テスト（守っている約束ごとに分割。全体像は tests/__init__.py）
 ├── templates/judge/
+│   ├── base.html
 │   ├── index.html
+│   ├── privacy.html  # プライバシーポリシー（雛形。設置する方が埋める）
+│   ├── _consultation_guide.html
 │   └── prompts/job_offer_risk_assess.md   # 闇バイト判定プロンプト
 config/               # Django プロジェクト設定
 ```
 
 ## 入力の制限
 
-- 求人テキストの入力は必須
-- 判定できる回数には上限があります
-  - **1人あたり 1日 4件**（既定値。`PERSON_DAILY_LIMIT` で変更可。ブラウザの
-    Cookie で判定し、日本時間の0時にリセット）
-  - **サイト全体で 1日 11件**（既定値。`SITE_DAILY_LIMIT` で変更可）
+- 求人テキストの入力は必須。長さの上限は 10,000 文字
+  （`apps/judge/forms.py` の `TEXT_MAX_LENGTH`）
+- 判定できる回数の上限は、環境変数で決めてください（既定値は小さめの出発点です。
+  決め方は「[環境変数の設定](#2-環境変数の設定)」を参照）
+  - `PERSON_DAILY_LIMIT`：1人あたり1日に判定できる件数の上限。ブラウザの Cookie で
+    数え、日本時間の0時にリセットします（既定値：4件）
+  - `SITE_DAILY_LIMIT`：サイト全体で1日に判定できる件数の上限（既定値：11件）
 
   どちらに達した場合も判定は行わず、その旨と相談先（#9110）を画面に案内します。
 
@@ -216,13 +239,21 @@ config/               # Django プロジェクト設定
   「本アプリのコードが何を保存しないか」であって、アプリを動かしているサーバーや
   その前段の設定まで保証するものではありません。ご自身で設置する方は、下の
   「セルフホスト・再配布される方へ」も必ずお読みください。
+- **画面の表示に、外部の CDN を使っています。** Bootstrap の CSS と JS を
+  `cdn.jsdelivr.net` から読み込むため、ページを開くと利用者のブラウザがこの CDN へ
+  直接リクエストを出し、IP アドレスと User-Agent が渡ります。入力内容や判定結果は
+  含みません。改ざんを防ぐため `integrity`（SRI）で内容を固定していますが、接続その
+  ものは避けられません。CDN を使わずに配信したい場合は、`base.html` と `index.html`
+  の参照を自前のファイルに差し替えてください（静的ファイルの配信は現在入れていない
+  ため、`Dockerfile` のコメントとあわせて見直しが必要です）。
 
 ### LLM API（Anthropic）側
 
 判定のため、入力内容は外部の LLM API（**Anthropic Claude API**）に送信されます。
-**ここから先は本アプリの管理外です。** 現時点で Zero Data Retention（ZDR＝データを
-一切保持しない契約）は締結していません。通常の商用 API 利用における Anthropic 側の
-取り扱いは以下の通りです。
+**ここから先は本アプリの管理外です。** 本アプリは Zero Data Retention（ZDR＝データを
+一切保持しない契約）を前提にしていません。ZDR は API を契約する組織単位の設定なので、
+締結の有無は設置する方の契約によります。締結していない通常の商用 API 利用における
+Anthropic 側の取り扱いは、以下の通りです。
 
 - 送信されたプロンプト・レスポンスが、明示的な許可なく **Anthropic のモデル学習に
   使われることはありません。**
@@ -357,7 +388,7 @@ DATABASE_URL=sqlite:////data/db.sqlite3
 テストは平文のクライアントで走るため CI ではこれを使っており、本番でリダイレクトが
 ループしたときに、イメージを作り直さず環境変数だけで戻せる余地も兼ねています。
 
-デプロイ後に、次の3つを確認してください。
+デプロイ後に、次の2つをコマンドで、もう1つを画面で確認してください。
 
 ```bash
 curl -sI https://<ドメイン>/     # 200 であること。301 ならリダイレクトループ
@@ -380,10 +411,6 @@ HSTS の `includeSubDomains` と `preload` は、どちらも取り消しが効�
 - 判定結果ページは `Cache-Control: no-store` を返します。前段にリバースプロキシや
   CDN を置く場合は、このヘッダが打ち消されたり無視されたりしない設定になっているか
   ご確認ください（「データの取り扱い」の「本アプリでは防ぎきれないこと」を参照）。
-- Claude APIのコストと実行回数の閲覧のために、adminを実装予定です。現時点では未実装なので、総当たり攻撃の窓を封鎖するために、`INSTALLED_APPS`に`"django.contrib.admin"`は入れていませんが、将来的な実装の時のため以下は残しています。
-  - `INSTALLED_APPS`の `"django.contrib.auth"` / `"django.contrib.contenttypes"`
-  - `"django.contrib.auth.middleware.AuthenticationMiddleware"`
-  - `"django.contrib.auth.context_processors.auth"`
 
 ---
 
@@ -547,9 +574,11 @@ Claude API は `SITE_DAILY_LIMIT` で頭打ち）と、通知に気づいてか�
 - **`claude-haiku-4-5` への切り替えは推奨しません。** 2026-09-22 のサンプルデータ
   比較テストで、Sonnet 5 が 0 件だった危険な求人の見落としが 1 件発生しました。
   コスト削減の効果より、見落としによる利用者のリスクのほうが大きいと判断しています。
-- **`claude-fable-5` / `claude-mythos-5` は `CLAUDE_MODEL` に設定しないでください。**
-  これらは Anthropic の Covered Models に指定されており、**30 日間のデータ保持が必須**で、
-  ZDR を適用できません。本アプリの用途にはオーバースペックでもあります。
+- **Anthropic が Covered Models に指定しているモデルは `CLAUDE_MODEL` に設定しないで
+  ください**（`claude-fable-5` / `claude-fable-5-1` / `claude-mythos-5` /
+  `claude-mythos-5-1` など）。これらは **30 日間のデータ保持が必須**で、ZDR を適用でき
+  ません。世代が増えるため、個別の ID ではなく Anthropic 側の Covered Models の一覧を
+  ご確認ください。本アプリの用途にはオーバースペックでもあります。
 - **データ保持をさらに短くしたい場合**は、Anthropic のセールスに連絡して
   Zero Data Retention（ZDR）契約を締結してください。ZDR は組織単位で有効化され、
   本アプリが使用する Messages API は適用対象です（Batch・Files API・Managed Agents は対象外）。
@@ -572,6 +601,9 @@ Claude API は `SITE_DAILY_LIMIT` で頭打ち）と、通知に気づいてか�
 （評価用データセットが非公開のため、メンテナ側で評価を回してから判断します）。
 また、**実在の闇バイト求人の文面を issue や PR に貼らないでください**。公開リポジトリに
 残ると、そのまま募集文のテンプレートとして使えてしまいます。
+
+脆弱性の報告、および**判定の検知を回避する手口**の報告は、公開の issue ではなく
+[SECURITY.md](SECURITY.md) の窓口へお願いします。
 
 ## ライセンス
 
