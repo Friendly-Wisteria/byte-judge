@@ -60,32 +60,64 @@ class OversizedTextIsRefusedBeforeTheViewTests(TestCase):
 
 @override_settings(VIEW_TEST_MODE=True)
 class TextareaMaxLengthTest(SimpleTestCase):
-    """フォームの文字数の上限3,000文字を超えた場合に、リクエストが拒否されることを確認する。"""
+    """フォームの文字数の上限を超えた場合に、リクエストが拒否されることを確認する。
 
-    MAX_LENGTH = 3000
+    上限の値そのものはここに書き写さない（forms との二重管理になり、上限を
+    動かしたときに、超過を期待しているテストが黙って通るようになる）。
+    """
+
+    OVER_LENGTH = TEXT_MAX_LENGTH + 1000
 
     def _form(self, length):
         filler = MARKER + "あ" * (length)
         form = JobOfferRiskAssessForm(data={"text": filler[:length]})
         return form
 
-    def test_max_acceptable_letter_count_is_3000(self):
-        """3,000文字ぴったりの長さのテキストは通す
+    def test_text_at_the_limit_is_accepted(self):
+        """上限ぴったりの長さのテキストは通す
         変異テスト: `JobOfferRiskAssessForm`の`max_length`を短くする
         """
-        form = self._form(3000)
+        form = self._form(TEXT_MAX_LENGTH)
         self.assertTrue(form.is_valid())
 
-    def test_text_excess_3000_letters_is_invalid(self):
-        """3,000文字を一文字でも超えると通さない
+    def test_text_over_the_limit_is_invalid(self):
+        """上限を一文字でも超えると通さない
         変異テスト: `JobOfferRiskAssessForm`の`max_length`を長くする
         """
-        form = self._form(3001)
+        form = self._form(TEXT_MAX_LENGTH + 1)
         self.assertFalse(form.is_valid())
+
+    def test_crlf_newlines_are_counted_as_one_character(self):
+        """改行は、画面の文字数の表示と同じく1文字として数える
+
+        ブラウザは送信時に改行を CRLF にする（HTML の仕様）。一方、表示が使う
+        textarea.value は LF で数えるため、正規化しないと改行の数だけ多く数え、
+        「カウンタは上限内なのに弾かれる」ことになる（#57）。
+        変異テスト: `NewlineNormalizedCharField.to_python` の正規化を外す
+        """
+        block = "あ" * 9
+        lines = TEXT_MAX_LENGTH // 10
+        # LF 換算でちょうど上限（末尾は改行で終わらせない。CharField が strip する）
+        text = ("\n".join([block] * lines)) + "あ"
+        self.assertEqual(len(text), TEXT_MAX_LENGTH)
+
+        submitted = text.replace("\n", "\r\n")
+        # 前提：正規化しなければ超えること（超えなければ検知にならない）
+        self.assertGreater(len(submitted), TEXT_MAX_LENGTH)
+
+        self.assertTrue(JobOfferRiskAssessForm(data={"text": submitted}).is_valid())
+
+    def test_the_judged_text_has_normalized_newlines(self):
+        """判定に渡る本文の改行も LF に揃える（数えた対象と同じものを送る）
+        変異テスト: 正規化を to_python ではなく max_length の後ろに移す
+        """
+        form = JobOfferRiskAssessForm(data={"text": "前半\r\n後半\r末尾"})
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data["text"], "前半\n後半\n末尾")
 
     def test_error_message_contains_guide_to_consultation(self):
         """文字数を超過した時に、公的な相談窓口の案内を表示する"""
-        form = self._form(4000)
+        form = self._form(self.OVER_LENGTH)
         self.assertEqual(len(form.errors["text"]), 1)
         self.assertIn(CONSULTATION_HEADING, form.errors["text"][0])
         for contact, case in CONSULTATION_CONTACTS:
@@ -96,16 +128,16 @@ class TextareaMaxLengthTest(SimpleTestCase):
         """何文字だったか・何文字までかを、両方そのまま出す
         変異テスト: メッセージから %(show_value)s / %(limit_value)s を落とす
         """
-        message = self._form(4000).errors["text"][0]
-        self.assertIn("4000文字", message)
-        self.assertIn(f"{self.MAX_LENGTH}文字以内", message)
+        message = self._form(self.OVER_LENGTH).errors["text"][0]
+        self.assertIn(f"{self.OVER_LENGTH}文字", message)
+        self.assertIn(f"{TEXT_MAX_LENGTH}文字以内", message)
 
     def test_error_message_does_not_echo_the_job_text(self):
         """募集文そのものはメッセージに載せない
         （messages は cookie / session に保存されるため）
         変異テスト: メッセージに %(value)s を入れる
         """
-        self.assertNotIn(MARKER, self._form(4000).errors["text"][0])
+        self.assertNotIn(MARKER, self._form(self.OVER_LENGTH).errors["text"][0])
 
 
 @override_settings(VIEW_TEST_MODE=True)
@@ -128,7 +160,9 @@ class TheInputIsHandedBackTests(TestCase):
         """長すぎて弾かれても、送った募集文はそのまま入力欄に戻る
         変異テスト: textarea の中身を空に戻す
         """
-        response = self.client.post("/", {"mode": "text", "text": MARKER + "あ" * 4000})
+        response = self.client.post(
+            "/", {"mode": "text", "text": MARKER + "あ" * (TEXT_MAX_LENGTH + 1000)}
+        )
         self.assertContains(response, MARKER)
 
     def test_the_text_survives_a_successful_judgment(self):
@@ -142,7 +176,7 @@ class TheInputIsHandedBackTests(TestCase):
         """textarea に maxlength を付けない
 
         ブラウザは超過ぶんを黙って捨てるため、上限で止めると、残したい末尾
-        （連絡方法が書かれやすい場所）を貼り足す手段がなくなる。3,000文字に
+        （連絡方法が書かれやすい場所）を貼り足す手段がなくなる。上限まで
         絞る作業のために外部のエディタを開かせることになるので、入力自体は
         止めず、文字数の表示とサーバー側の max_length で受ける。
         変異テスト: textarea に maxlength を付ける
@@ -158,7 +192,9 @@ class TheInputIsHandedBackTests(TestCase):
         上限超過は JS で止めない。
         変異テスト: MAX_LENGTH_ERROR から CONSULTATION_GUIDE を外す
         """
-        response = self.client.post("/", {"mode": "text", "text": "あ" * 4000})
+        response = self.client.post(
+            "/", {"mode": "text", "text": "あ" * (TEXT_MAX_LENGTH + 1000)}
+        )
         for contact, _ in CONSULTATION_CONTACTS:
             with self.subTest(contact=contact):
                 self.assertContains(response, contact)

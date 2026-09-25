@@ -40,12 +40,31 @@ MAX_LENGTH_ERROR = (
 )
 
 
+class NewlineNormalizedCharField(forms.CharField):
+    """改行を LF に正規化してから、長さを数えるフィールド。
+
+    ブラウザはフォーム送信時に改行を CRLF にする（HTML の仕様）。一方、画面の
+    文字数の表示が使う textarea.value は改行を LF で数えるため、正規化しないと
+    改行の数だけサーバー側が多く数え、「カウンタは上限内なのに弾かれる」ことに
+    なる（#57）。利用者が見ている数え方に合わせる。
+
+    正規化は to_python に置く。max_length のバリデータはこの後に走るので、
+    clean_text で直しても間に合わない。
+    """
+
+    def to_python(self, value):
+        value = super().to_python(value)
+        if value in self.empty_values:
+            return value
+        return value.replace("\r\n", "\n").replace("\r", "\n")
+
+
 class JobOfferRiskAssessForm(forms.Form):
     # 画像フィールドは意図的に定義しない。UI をコメントアウトしただけでは、
     # POST に image を含めれば判定まで通ってしまうため、受け口ごと閉じる。
     # 未知のフィールドは Django のフォームが無視するので、image を付けて
     # POST されても text だけで判定され、画像は読み捨てられる。
-    text = forms.CharField(  # CharField は既定で strip 済み・required=True
+    text = NewlineNormalizedCharField(  # CharField は既定で strip 済み・required=True
         max_length=TEXT_MAX_LENGTH,
         widget=forms.Textarea,
         error_messages={
