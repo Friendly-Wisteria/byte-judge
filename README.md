@@ -76,7 +76,7 @@ SECRET_KEY=<Django のシークレットキー>
 ALLOWED_HOSTS=127.0.0.1,localhost
 
 # ローカル開発時のみ、次の行を追加してください（本番では絶対に追加しない）
-# DEBUG=True
+DEBUG=True
 
 # Anthropic (Claude)
 ANTHROPIC_API_KEY=<Claude Console で取得した API キー>
@@ -101,6 +101,10 @@ SITE_DAILY_LIMIT=11
   （Sonnet 5 は 0 件）。費用より見落としの少なさを優先してください。
   また **`claude-fable-5` / `claude-mythos-5` は使用しないでください**（後述）。
 - `ALLOWED_HOSTS` は本番環境では実際のドメインに変更してください（例：`ALLOWED_HOSTS=example.com,www.example.com`）。
+- `DEBUG=True` は、ローカル開発では入れてください。未設定だと本番扱いになり、
+  `DATABASE_URL` の明示が必須になるため、次の手順の `manage.py migrate` が
+  `ImproperlyConfigured` で止まります（本番での設定漏れを防ぐガードです。
+  「本番環境にデプロイする場合の必須設定」の 3 を参照）。
 - `PERSON_DAILY_LIMIT` は 1人あたり、`SITE_DAILY_LIMIT` はサイト全体の、1日の判定
   回数です。前者は連打への摩擦（Cookie で数えるため、消せば回避できます）、後者は
   月額の利用上限を1日で使い切られないための枠です。
@@ -289,20 +293,30 @@ ALLOWED_HOSTS=example.com,www.example.com
 
 ### 3. データベースを設定する（`DATABASE_URL`）
 
-SQLite3 と PostgreSQL は、本番環境で使用できることをテストで固定しています。
+`DATABASE_URL` には PostgreSQL と SQLite のどちらも指定できます（どちらの形式も
+受け付けることは `apps/judge/tests/test_deployment_settings.py` で固定しています）。
+開発環境（`DEBUG=True`）で未設定のときは、手元の SQLite にフォールバックします。
 
 ```dotenv
-# SQLite3の例
-DATABASE_URL=sqlite:////tmp/prod.sqlite3
-
-# PostgreSQLの例
+# PostgreSQL の例
 DATABASE_URL=postgresql://<user>:<password>@<host>/<dbname>?sslmode=require
+
+# SQLite の例（永続ディスク上のパスを指定してください）
+DATABASE_URL=sqlite:////data/db.sqlite3
 ```
 
-⚠️ 本番環境では、環境変数での`DATABASE_URL`の明示的な設定が必須です。
-デフォルトへのフォールバックは使用できません。
+⚠️ **本番環境（`DEBUG=False`）では、`DATABASE_URL` の明示的な設定が必須です。**
+未設定のまま起動しようとすると `ImproperlyConfigured` で止まります
+（`config/settings.py`）。開発用 SQLite への暗黙のフォールバックは行いません。
 
-- 永続ディスクのない環境での設定漏れによって、`DailyUsage` がインスタンスごと・再起動ごとに分かれ、`SITE_DAILY_LIMIT` が意味を成さなくなる事故に対するフェイルセーフです。
+設定漏れは、起動時に止めます。永続ディスクの無い環境（Cloud Run など）では、
+フォールバック先の SQLite にも例外を出さずに書けてしまうためです。その状態で
+動くと `DailyUsage` がインスタンスごと・再起動ごとに分かれ、`SITE_DAILY_LIMIT`
+が意味を成しません。
+
+永続ディスクを持つ環境（Fly.io のボリュームなど）で SQLite を使う場合は、パスを
+明示してください。止めているのは「未設定」だけであって、SQLite の使用そのもの
+ではありません。
 
 - 保存するのは `DailyUsage`（日付と件数）だけなので、移行の負担はありません。
 - SQLite は書き込み時にデータベース全体をロックするため、gunicorn などで
