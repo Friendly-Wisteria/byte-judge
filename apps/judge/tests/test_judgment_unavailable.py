@@ -18,6 +18,8 @@ from ..fixtures import FIXTURES
 from ..models import DailyUsage
 from ..schema import RiskReportSchema
 from .helpers import (
+    FORBIDDEN_ON_THE_ERROR_PAGE,
+    FORBIDDEN_TECHNICAL_TOKENS,
     JOB_TEXT,
     FakeRequest,
     FakeResponse,
@@ -26,33 +28,6 @@ from .helpers import (
     billing_error,
     rate_limit_error,
     schema_validation_error,
-)
-
-# 利用者に見せない技術的な語。判定不可の案内（文言）と 500 ページの両方で検査する。
-FORBIDDEN_TECHNICAL_TOKENS = (
-    "AssessmentError",
-    "UNAVAILABLE",
-    "FAILED",
-    "Traceback",
-    "Exception",
-    "None",
-    "429",
-    "402",
-    "refusal",
-    "max_tokens",
-    "stop_reason",
-    "API",
-)
-
-# 500 ページに固有の危うさ。この画面は DB 障害で出ることが多いため、接続先や
-# 例外クラス名が載っていないことまで見る。
-FORBIDDEN_ON_THE_ERROR_PAGE = FORBIDDEN_TECHNICAL_TOKENS + (
-    "DatabaseError",
-    "OperationalError",
-    "DATABASE_URL",
-    "SECRET_KEY",
-    "psycopg",
-    "sqlite",
 )
 
 
