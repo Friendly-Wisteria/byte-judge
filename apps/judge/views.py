@@ -3,6 +3,7 @@ import logging
 from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import DisallowedHost
+from django.shortcuts import redirect
 from django.utils.decorators import method_decorator
 from django.views import defaults
 from django.views.decorators.cache import never_cache
@@ -192,3 +193,16 @@ def bad_request(request, exception, template_name="400.html"):
         )
     return defaults.bad_request(request, exception, template_name=template_name)
 
+
+def page_not_found(request, exception, template_name="404.html"):
+    """404 は、エラーページを見せずにトップへ送る（#50）。
+
+    ここに来るのは URL の打ち間違い・古いブックマーク・リンク切れで、利用者が
+    やることは結局「最初から入力する」しかない。英語のエラーページを挟むより、
+    そのまま入力画面に繋ぐ。
+
+    リダイレクトにすると、どの URL が踏まれたのかが追いにくくなるので、path は
+    ログに残す（INFO。届いた値そのものなので、内容は信用しない前提で読むこと）。
+    """
+    logger.info("Not found, redirecting to the index: %s", request.path)
+    return redirect("judge:index")

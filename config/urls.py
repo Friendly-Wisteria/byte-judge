@@ -28,3 +28,4 @@ urlpatterns = [
 # 403_csrf.html を探すので、テンプレートを置くだけで切り替わる。
 # 500 は apps/judge/templates/500.html が同じ役割を持つ（#45）。
 handler400 = "apps.judge.views.bad_request"
+handler404 = "apps.judge.views.page_not_found"

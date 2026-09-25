@@ -297,11 +297,15 @@ class AdminDeploymentTests(SimpleTestCase):
 
         self.assertFalse("django.contrib.admin" in settings.INSTALLED_APPS)
 
-    def test_admin_url_returns_404(self):
+    def test_admin_urls_do_not_reach_an_admin_page(self):
         """
-        adminのURLが存在しないこと
+        adminのURLが、どこにも繋がっていないこと
         ## 期待する挙動
-        `/admin`と`/admin/login`が404を返す
+        `/admin`と`/admin/login`が、トップへのリダイレクトになる
+
+        404 はトップへのリダイレクトに差し替えたため（#50）、status は 302 に
+        なる。確かめたいのは「adminの画面が出ないこと」なので、リダイレクト先
+        まで追って見る。
         # Mutation Test
         `config.urls.py`に、以下の2行を追加
         ```python
@@ -313,10 +317,13 @@ class AdminDeploymentTests(SimpleTestCase):
             path("", include("apps.judge.urls")),
         ]
         ```
+        adminを足すと`/admin/`が200でログイン画面を返すため、リダイレクトの
+        確認で落ちる。
         # 必要性
         未実装のadminが総当たり攻撃の的となりえないように封鎖していることを固定する。
         """
-        self.assertEqual(self.client.get("/admin").status_code, 404)
-        self.assertEqual(self.client.get("/admin/").status_code, 404)
-        self.assertEqual(self.client.get("/admin/login").status_code, 404)
-        self.assertEqual(self.client.get("/admin/login/").status_code, 404)
+        for path in ("/admin", "/admin/", "/admin/login", "/admin/login/"):
+            with self.subTest(path=path):
+                response = self.client.get(path, follow=True)
+                self.assertEqual(response.redirect_chain[-1], ("/", 302))
+                self.assertNotContains(response, "Django administration")
