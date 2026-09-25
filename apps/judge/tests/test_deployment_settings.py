@@ -184,9 +184,9 @@ class DatabaseURLSettingsTests(SimpleTestCase):
             ),
             (
                 "sqlite3",
-                "sqlite:////tmp/prod.sqlite3",
+                "sqlite:////data/prod.sqlite3",
                 "django.db.backends.sqlite3",
-                "/tmp/prod.sqlite3",
+                "/data/prod.sqlite3",
             ),
         ]
         for label, url, engine, name in cases:
