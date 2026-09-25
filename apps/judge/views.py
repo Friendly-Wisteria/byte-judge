@@ -2,7 +2,9 @@ import logging
 
 from django.conf import settings
 from django.contrib import messages
+from django.core.exceptions import DisallowedHost
 from django.utils.decorators import method_decorator
+from django.views import defaults
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from django.views.generic import FormView, TemplateView
@@ -168,3 +170,25 @@ class IndexView(FormView):
 
 class PrivacyPolicyView(TemplateView):
     template_name = "judge/privacy.html"
+
+
+def bad_request(request, exception, template_name="400.html"):
+    """400（SuspiciousOperation）の差し替え。相談先つきの 400.html を返す。
+
+    テンプレートを置くだけなら handler400 は要らないが、DisallowedHost の
+    ときに ALLOWED_HOSTS をログへ出したいので、この view を挟む。Django 自身
+    は届いた Host の値だけを出し（django.security.DisallowedHost）、設定側に
+    何が入っているかは出さないため、突き合わせができない。
+
+    ALLOWED_HOSTS 以外の 400（RequestDataTooBig など）でこの値を出しても
+    手がかりにならないので、DisallowedHost のときだけにする。
+
+    request.get_host() には触らないこと。DisallowedHost の最中に呼ぶと、同じ
+    例外がもう一度出る。
+    """
+    if isinstance(exception, DisallowedHost):
+        logger.error(
+            "DisallowedHost. Configured ALLOWED_HOSTS=%s", settings.ALLOWED_HOSTS
+        )
+    return defaults.bad_request(request, exception, template_name=template_name)
+

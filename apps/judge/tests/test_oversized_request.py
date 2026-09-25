@@ -40,22 +40,23 @@ class OversizedTextIsRefusedBeforeTheViewTests(TestCase):
         """弾かれたときのページに、貼り付けた求人文が出ないこと。"""
         self.assertNotContains(self._post_oversized_text(), MARKER, status_code=400)
 
-    def test_the_user_currently_sees_djangos_default_page(self):
-        """現状の固定：アプリの画面ではなく、Django 既定の 400 が出ている。
+    def test_the_consultation_guide_reaches_this_page_too(self):
+        """view に届かないこの経路でも、相談先が出ること（#50）。
 
         送信前の長さ制限（文字数の表示）とフォームの max_length を入れたため、
-        通常の利用でこの 400 に届くことはなくなった。ここに来るのはテキスト欄
-        に約29万文字（DATA_UPLOAD_MAX_MEMORY_SIZE を urlencoded で超える量）を
-        送った場合だけで、非テキストの巨大な POST は 200 でアプリの画面が返る
-        （ファイル部分にこの上限は効かず、画像フィールドも無いため読み捨て）。
+        通常の利用でこの 400 に届くことはない。ここに来るのはテキスト欄に約29万
+        文字（DATA_UPLOAD_MAX_MEMORY_SIZE を urlencoded で超える量）を送った
+        場合だけだが、届いた人に案内が無いままにはしない。
 
-        handler400 を用意するかは、画像入力の再開と合わせて判断する。この上限は
-        画像が捨てられたことの検知の前提でもあり（test_image_input.py の
-        test_data_limit_stays_within_the_file_memory_limit）、単独で動かせない。
+        画面そのものの検証は test_error_pages.py にある。ここでは「この経路から
+        あの画面に届く」ことだけを見る。
+        変異テスト: config.urls の handler400 を外す
         """
-        self.assertNotContains(
-            self._post_oversized_text(), "バイトジャッジ", status_code=400
-        )
+        response = self._post_oversized_text()
+
+        for contact, _ in CONSULTATION_CONTACTS:
+            with self.subTest(contact=contact):
+                self.assertContains(response, contact, status_code=400)
 
 
 @override_settings(VIEW_TEST_MODE=True)

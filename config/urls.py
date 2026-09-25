@@ -20,3 +20,11 @@ from django.urls import include, path
 urlpatterns = [
     path("", include("apps.judge.urls")),
 ]
+
+# Django 既定の英語ページの差し替え（#50）。判定を返せないときに相談先を必ず
+# 添える約束を、view に届かない経路にも広げる。
+#
+# 403（CSRF 検証の失敗）は handler では差し替えられない。csrf_failure が
+# 403_csrf.html を探すので、テンプレートを置くだけで切り替わる。
+# 500 は apps/judge/templates/500.html が同じ役割を持つ（#45）。
+handler400 = "apps.judge.views.bad_request"
