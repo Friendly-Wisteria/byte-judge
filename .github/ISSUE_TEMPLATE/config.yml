@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: セキュリティに関わる報告（判定の回避手口を含む）
+    url: https://github.com/Friendly-Wisteria/byte-judge/blob/main/SECURITY.md
+    about: 公開の issue には書かないでください。非公開で受け付けます。
+  - name: 変更を提案する前に
+    url: https://github.com/Friendly-Wisteria/byte-judge/blob/main/CONTRIBUTING.md
+    about: 「絶対に守ってほしい設計方針」があります。反する変更は受け入れられません。

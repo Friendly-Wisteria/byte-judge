@@ -1,0 +1,65 @@
+name: 判定の誤り（見落とし・誤検知）
+description: 危険な求人を見逃した、または正常な求人を危険と判定した
+labels: ["判定精度"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ **求人の文面をそのまま貼らないでください。**
+        危険な文面ほど、公開リポジトリに残ると**そのまま募集のテンプレートとして
+        使えてしまいます。** 文面ではなく、下の欄に**特徴**を書いてください。
+
+        判定プロンプトは公開していますが、**回避手口そのもの**（この書き方なら
+        検知されない、という具体例）は
+        [SECURITY.md](https://github.com/Friendly-Wisteria/byte-judge/blob/main/SECURITY.md)
+        の非公開の窓口へお願いします。
+  - type: dropdown
+    id: kind
+    attributes:
+      label: どちらの誤りですか
+      options:
+        - 見落とし（危険なのに「危険な兆候なし」になった）
+        - 誤検知（正常なのに「危険」「要注意」になった）
+    validations:
+      required: true
+  - type: textarea
+    id: characteristics
+    attributes:
+      label: 求人文の特徴
+      description: 文面そのものではなく、要約で書いてください。
+      placeholder: |
+        - 仕事内容：荷物を受け取って指定の場所に運ぶ、とだけ書かれていた
+        - 報酬：日給で相場の3倍ほど、即日現金
+        - 連絡手段：秘匿性の高いメッセージアプリへ誘導
+        - 事業者情報：会社名の記載なし
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際に出た判定
+      description: 危険度スコア・ラベル・表示されたシグナルを書いてください。
+      placeholder: |
+        スコア 20 / 危険な兆候なし / シグナルなし
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: どう判定されるべきだったか
+    validations:
+      required: true
+  - type: textarea
+    id: synthetic
+    attributes:
+      label: 合成した再現例（任意）
+      description: |
+        手元で再現するための文面を作れる場合は、ここに貼ってください。
+        実在の文面をそのまま使わず、**特徴だけを写した合成の文**にしてください。
+  - type: checkboxes
+    id: no-real-text
+    attributes:
+      label: 確認
+      options:
+        - label: 実在の求人の文面そのものは含めていません
+          required: true
