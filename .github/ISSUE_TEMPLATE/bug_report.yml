@@ -1,0 +1,44 @@
+name: バグ報告
+description: 動作がおかしい、エラーが出る（コードの不具合）
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ **実在の闇バイト求人の文面は貼らないでください。**
+        公開リポジトリに残ると、そのまま募集文のテンプレートとして使えてしまいます。
+        再現に必要な場合は、合成した最小限の例に置き換えてください。
+
+        - 判定の見落とし・誤検知は「判定の誤り」のテンプレートへ
+        - 検知の回避手口や、入力が保存される経路の発見は
+          [SECURITY.md](https://github.com/Friendly-Wisteria/byte-judge/blob/main/SECURITY.md)
+          の非公開の窓口へ（公開の issue に書かないでください）
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 何が起きたか
+      description: 期待した動作と、実際の動作を書いてください。
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 再現手順
+      placeholder: |
+        1. ...
+        2. ...
+        3. エラーが出る
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 環境
+      placeholder: 例：セルフホスト（Cloud Run）/ Python 3.13 / Chrome
+  - type: checkboxes
+    id: no-real-text
+    attributes:
+      label: 確認
+      options:
+        - label: 実在の求人の文面そのものは含めていません
+          required: true

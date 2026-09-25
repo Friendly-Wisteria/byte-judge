@@ -1,0 +1,41 @@
+name: 機能の提案
+description: 新しい機能や改善の提案
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提案の前に
+        [CONTRIBUTING の「絶対に守ってほしい設計方針」](https://github.com/Friendly-Wisteria/byte-judge/blob/main/CONTRIBUTING.md#絶対に守ってほしい設計方針)
+        をお読みください。**いずれも議論の末に決まったもので、反する変更は
+        良かれと思ってのものでも受け入れられません。**
+
+        判定プロンプトを変える提案は、進め方が他と異なります。評価用データセットが
+        非公開のため、**メンテナ側で評価を回してから判断します。**
+  - type: textarea
+    id: problem
+    attributes:
+      label: 解決したい問題
+      description: どんな場面で、誰が困っていますか。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 提案の内容
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: 想定利用者への影響
+      description: |
+        このアプリの想定利用者は、闇バイトの標的になりやすい10〜20代前半の方です。
+        提案が、不安な状態にある利用者にどう影響するかを書いてください。
+  - type: checkboxes
+    id: checked-policy
+    attributes:
+      label: 確認
+      options:
+        - label: CONTRIBUTING の「絶対に守ってほしい設計方針」に反していないか確認しました
+          required: true
