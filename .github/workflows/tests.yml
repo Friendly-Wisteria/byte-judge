@@ -31,6 +31,10 @@ jobs:
       # SECURE_SSL_REDIRECT が全部を 301 にしてしまう。リダイレクト自体の検証は
       # HttpsRedirectIsWiredForTheProxyTests が override_settings で行う。
       SECURE_SSL_REDIRECT: "False"
+      # DEBUG=False では DATABASE_URL の明示が必須（config/settings.py）。
+      # 本番の設定漏れを止めるためのガードなので、使い捨ての CI では
+      # テスト用の SQLite を明示的に指定して通す。
+      DATABASE_URL: "sqlite:///db.sqlite3"
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
