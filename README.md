@@ -21,6 +21,7 @@
 - **根拠つきシグナル表示**：「異常な高額報酬」「秘匿アプリへの誘導」など、検出した兆候ごとに深刻度（高/中/低）と判断根拠を提示
 - **推奨アクションの提示**：ユーザーが次に取るべき行動をわかりやすい「ですます調」で案内
 - **構造化出力**：Claude の structured outputs（Pydantic スキーマ）で JSON を強制し、パース失敗時は結果を表示せずエラー処理
+- **判定できないときも相談先を案内**：レート制限・月額の利用上限・API 障害・安全機構による拒否（`stop_reason: "refusal"`）・出力の打ち切り（`max_tokens`）を検出した場合は、判定結果を表示せず、LLM が利用できない旨と公的な相談先（#9110・188）を案内
 
 
 ## 判定の観点（一例）
@@ -49,24 +50,14 @@
 > そのまま残しており、運用方針次第で再開予定です。画像の制限値（最大 5MB / 約 33MP）も
 > コード上は有効なままです。
 
-## 使用している LLM
-
-**Anthropic Claude** 
-- `anthropic` SDK 経由
-- モデル名は環境変数 `CLAUDE_MODEL` で切り替え可能 (既定は`claude-sonnet-5`)
-- 出力は `RiskReportSchema`（Pydantic）で構造化
-- 安全機構による拒否（`stop_reason: "refusal"`）や出力打ち切り（`max_tokens`）を検出し、その場合は判定結果を表示しません
-- レート制限・月額の利用上限・API 障害・拒否などでLLMの判定を受けられないときは、エラー画面中にLLMが利用不可の旨と、公的な相談先（#9110、188）への案内を表示します
-
-
 ## 技術スタック
 
 | 領域 | 使用技術 |
 |---|---|
 | 言語 | Python 3.13 |
 | フレームワーク | Django 6.1 |
-| LLM | Anthropic Claude（`anthropic`） |
-| バリデーション | Pydantic 2 |
+| LLM | Anthropic Claude（`anthropic` SDK。モデルは `CLAUDE_MODEL` で切り替え。既定は `claude-sonnet-5`） |
+| バリデーション | Pydantic 2（LLM の出力は `RiskReportSchema` で構造化） |
 | 画像処理 | Pillow（画像入力は停止中。起動時のピクセル数上限の設定にのみ使用） |
 | 設定管理 | django-environ（`.env`） |
 | データベース | PostgreSQL / SQLite のどちらも可（`DATABASE_URL` で指定。本番では明示が必須）。保存するのは1日の判定件数のみ |
