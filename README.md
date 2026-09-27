@@ -143,31 +143,6 @@ uv run python manage.py runserver
 
 ---
 
-## プロジェクト構成
-
-```
-apps/judge/
-├── views.py          # 入力フォームと結果表示（FormView）
-├── urls.py           # トップ（/）とプライバシーポリシー（/privacy/）
-├── forms.py          # 画像サイズ/解像度の検証（decompression bomb 対策含む）
-├── service.py        # Claude API 呼び出し・プロンプト整形・結果パース
-├── schema.py         # RiskReportSchema（score / level / summary / signals / advice / has_enough_info / missing_info）
-├── quota.py          # 判定回数の上限（1人＝署名付きCookie / 全体＝日次カウンタ）
-├── models.py         # DailyUsage（日付と件数だけの日次カウンタ）
-├── fixtures.py       # VIEW_TEST_MODE 用の固定サンプル
-├── evalset/          # 判定精度の評価（ケース集 cases.toml は非公開）
-├── tests/            # 回帰テスト（守っている約束ごとに分割。全体像は tests/__init__.py）
-├── templates/judge/
-│   ├── base.html
-│   ├── index.html
-│   ├── privacy.html  # プライバシーポリシー（雛形。設置する方が埋める）
-│   ├── _consultation_guide.html
-│   └── prompts/job_offer_risk_assess.md   # 闇バイト判定プロンプト
-config/               # Django プロジェクト設定
-```
-
----
-
 ## データの取り扱い
 
 ### 本アプリのサーバー側に保存しないこと
@@ -599,6 +574,31 @@ Claude API は `SITE_DAILY_LIMIT` で頭打ち）と、通知に気づいてか�
   運用形態を変更した場合は、この節とあわせて必ず記載を更新してください。
 - 本ソフトウェアは無保証で提供されます（ライセンス条項参照）。セルフホスト
   環境での運用・データ管理の責任は、運用者にあります。
+
+---
+
+## プロジェクト構成
+
+```
+apps/judge/
+├── views.py          # 入力フォームと結果表示（FormView）
+├── urls.py           # トップ（/）とプライバシーポリシー（/privacy/）
+├── forms.py          # 画像サイズ/解像度の検証（decompression bomb 対策含む）
+├── service.py        # Claude API 呼び出し・プロンプト整形・結果パース
+├── schema.py         # RiskReportSchema（score / level / summary / signals / advice / has_enough_info / missing_info）
+├── quota.py          # 判定回数の上限（1人＝署名付きCookie / 全体＝日次カウンタ）
+├── models.py         # DailyUsage（日付と件数だけの日次カウンタ）
+├── fixtures.py       # VIEW_TEST_MODE 用の固定サンプル
+├── evalset/          # 判定精度の評価（ケース集 cases.toml は非公開）
+├── tests/            # 回帰テスト（守っている約束ごとに分割。全体像は tests/__init__.py）
+├── templates/judge/
+│   ├── base.html
+│   ├── index.html
+│   ├── privacy.html  # プライバシーポリシー（雛形。設置する方が埋める）
+│   ├── _consultation_guide.html
+│   └── prompts/job_offer_risk_assess.md   # 闇バイト判定プロンプト
+config/               # Django プロジェクト設定
+```
 
 ---
 
