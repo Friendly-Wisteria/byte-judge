@@ -391,7 +391,7 @@ HSTS の `includeSubDomains` と `preload` は、どちらも取り消しが効�
 まだ有効にしていません（`manage.py check --deploy` の `W005` / `W021` は、この
 判断の結果として残しているものです）。
 
-### 5. その他
+### 5. `SECRET_KEY` とキャッシュ制御
 
 - `SECRET_KEY` は本番専用の値を新しく生成してください。開発用の値を
   流用しないでください。
