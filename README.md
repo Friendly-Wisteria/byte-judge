@@ -58,7 +58,7 @@
 | フレームワーク | Django 6.1 |
 | LLM | Anthropic Claude（`anthropic` SDK。モデルは `CLAUDE_MODEL` で切り替え。既定は `claude-sonnet-5`） |
 | バリデーション | Pydantic 2（LLM の出力は `RiskReportSchema` で構造化） |
-| 画像処理 | Pillow（画像入力は停止中。起動時のピクセル数上限の設定にのみ使用） |
+| 画像処理 | Pillow（起動時のピクセル数上限の設定にのみ使用。[画像入力は停止中](#入力の仕様)） |
 | 設定管理 | django-environ（`.env`） |
 | データベース | PostgreSQL / SQLite のどちらも可（`DATABASE_URL` で指定。本番では明示が必須）。保存するのは1日の判定件数のみ |
 | 実行環境 | 開発は `runserver` / 本番は gunicorn |
