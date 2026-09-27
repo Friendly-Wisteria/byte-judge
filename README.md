@@ -369,7 +369,7 @@ DATABASE_URL=sqlite:////data/db.sqlite3
 
 | 設定 | 値 | 役割 |
 | --- | --- | --- |
-| `SECURE_PROXY_SSL_HEADER` | `X-Forwarded-Proto` を見る | 前段が HTTPS で終端した印を信用する |
+| `SECURE_PROXY_SSL_HEADER` | 本番環境の `X-Forwarded-Proto` を見る | 前段が HTTPS で終端した印を信用する |
 | `SECURE_SSL_REDIRECT` | `True` | HTTP で来た接続を HTTPS へ飛ばす |
 | `SESSION_COOKIE_SECURE` / `CSRF_COOKIE_SECURE` | `True` | Cookie を HTTPS 限定にする |
 | `SECURE_HSTS_SECONDS` | `300` | 5分。運用が安定してから伸ばす |
@@ -389,7 +389,7 @@ curl -sI https://<ドメイン>/     # 200 であること。301 ならリダイ
 curl -sI https://<ドメイン>/ | grep -i strict-transport   # HSTS が付くこと
 ```
 
-加えて、画面から実際に判定を1件送り、**POST が 403 にならないこと**を確認します。
+加えて、ブラウザから実際に判定を1件送り、**POST が 403 にならないこと**を確認します。
 403（CSRF の Origin チェック失敗）は、ブラウザが `https` で送っているのに Django が
 自分を `http` だと思っている、つまり `SECURE_PROXY_SSL_HEADER` が効いていない
 状態を示します。
@@ -408,11 +408,13 @@ HSTS の `includeSubDomains` と `preload` は、どちらも取り消しが効�
 
 ---
 
-## Google Cloud Run + Neon へのデプロイ
+## デプロイ例: Google Cloud Run + Neon
 
-この構成で実際に動くことを確認しています。永続ディスクを持たない代わりに、
-使われていないあいだの費用がほぼ出ない組み合わせです。他の PaaS へ移す場合も、
-上の「本番環境にデプロイする場合の必須設定」を満たせば同じように動きます。
+作者が、実際に動くことを確認している構成です。
+
+永続ディスクを持たない代わりに、使われていないあいだの費用がほぼ出ない組み合わせです。
+
+他の PaaS へ移す場合も、上の「本番環境にデプロイする場合の必須設定」を満たせば同じように動きます。
 
 ### 1. Neon（PostgreSQL）
 
@@ -513,7 +515,7 @@ gcloud run services logs read byte-judge --region asia-northeast1 --limit 20
 | 層 | 止めるもの | 設定する場所 |
 | --- | --- | --- |
 | アプリ | 1日の判定件数 | `SITE_DAILY_LIMIT`（既定 11件/日） |
-| LLM 側 | 月額の利用上限 | Claude Console の使用上限 |
+| LLM 側 | 月額の利用上限 | Claude Console のワークスペース上限 |
 | インフラ | 同時に動くコンテナ数 | `--max-instances`（上の「5. デプロイ」を参照） |
 | 請求 | 気づく手段 | GCP の予算アラート |
 
@@ -522,6 +524,15 @@ gcloud run services logs read byte-judge --region asia-northeast1 --limit 20
 **Claude Console の月額上限を、`SITE_DAILY_LIMIT` の前提と揃えてください。**
 アプリ側の上限はサイト全体の1日の件数しか見ないため、`SITE_DAILY_LIMIT` を
 引き上げたり、モデルの単価が変わったりすると、月額の見積もりはずれます。
+
+⚠️ **月額の上限は、API キー単位では設定できません。ワークスペース単位です。**
+本アプリ専用のワークスペースを作り、そこで発行したキーを `ANTHROPIC_API_KEY`
+に設定したうえで、そのワークスペースに上限をかけてください。既定の
+Default Workspace には上限を設定できないため、ワークスペースを分けない限り、
+この層の歯止めは掛けられません。他の用途と同じワークスペースに置くと、
+上限を共有することにもなります（2026-09 時点。設定場所は Anthropic の
+[Workspaces のドキュメント](https://platform.claude.com/docs/en/manage-claude/workspaces)
+を参照してください）。
 
 **GCP の予算アラートを設定してください。** 請求先アカウント →「予算とアラート」で、
 ひと月あたりの金額と、50% / 90% / 100% の通知を設定します。通知先は既定で請求先
