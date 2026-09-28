@@ -43,12 +43,17 @@ def _load_fresh_settings(env_overrides, remove=()):
 
 
 @override_settings(VIEW_TEST_MODE=True)
-class CsrfProtectionIsEnforcedTests(TestCase):
+class CsrfProtectionIsEnforcedTests(SimpleTestCase):
     """判定フォームの POST が CSRF で守られていることの検証。
 
     既定のテストクライアントは CSRF チェックを飛ばすため、保護が外れても
     他のテストはすべて緑のままになる。ここだけ enforce_csrf_checks=True で
     実際の経路を通す。
+
+    POST を通しても DB には触らない（VIEW_TEST_MODE=True が DailyUsage を使う
+    quota.reserve_site_slot() を飛ばし、個人の判定回数は Cookie だけで数えるため）。
+    そのため SimpleTestCase で足りる。この前提が変わると DatabaseOperationForbidden
+    で落ちるので、そのときは TestCase に戻す。
     """
 
     def setUp(self):
