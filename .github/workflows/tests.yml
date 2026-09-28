@@ -3,6 +3,7 @@ name: Tests
 on:
   push:
     branches: [ "main" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]
 
@@ -35,6 +36,9 @@ jobs:
       # 本番の設定漏れを止めるためのガードなので、使い捨ての CI では
       # テスト用の SQLite を明示的に指定して通す。
       DATABASE_URL: "sqlite:///db.sqlite3"
+      # タグの更新がある場合は、環境変数としてタグのバージョンを渡す。
+      # pyproject.toml上のバージョンが、GitHub上のバージョンと整合するかを検証するため
+      RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
