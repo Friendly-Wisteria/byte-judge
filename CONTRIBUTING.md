@@ -100,6 +100,23 @@ uv run python manage.py test apps.judge.tests
 uv run ruff check apps
 ```
 
+`DEBUG=False` のときだけ有効になる設定（`config/settings.py` の `if not DEBUG:` にある
+`SECURE_*`）に触ったときは、CI と同じ環境変数を付けて、もう一度回してください。
+
+```bash
+DEBUG=False SECURE_SSL_REDIRECT=False DATABASE_URL="sqlite:///db.sqlite3" \
+  uv run python manage.py test apps.judge.tests
+```
+
+普段の実行（`DEBUG=True`）では、この条件のテストは skip されます。テスト側の
+`override_settings(DEBUG=False)` では代わりになりません。`settings.py` の `if not DEBUG:` は
+読み込み時に一度しか通らず、`SESSION_COOKIE_SECURE` などが定義されないままになるためです。
+
+- `DATABASE_URL` — `DEBUG=False` では未設定だと起動前に止まります。テスト用 DB は
+  インメモリの SQLite なので、手元の `db.sqlite3` には触りません
+- `SECURE_SSL_REDIRECT=False` — テストクライアントは平文でリクエストするため、有効の
+  ままだと応答が全部 301 になります
+
 環境構築の手順は [README のセットアップ](README.md#セットアップ) を参照してください。
 
 ## リリースとタグの方針
