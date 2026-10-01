@@ -215,15 +215,25 @@ class LogsNeverContainInputTests(TestCase):
         self.assertIn("RuntimeError", output)
         self.assertNotIn(MARKER, output)
 
-    def test_anthropic_sdk_logger_cannot_emit_debug_payloads(self):
-        """ANTHROPIC_LOG=debug で SDK が送信ペイロード全文を出す経路を塞げていること。"""
-        # import 時点で適用済みであること
+    def test_anthropic_sdk_logger_is_not_at_debug_after_import(self):
+        """import を終えた時点で、SDK ロガーが DEBUG になっていないこと。
+
+        現状の SDK は ANTHROPIC_LOG が無ければ自分のロガーに触らないため、
+        実効レベルは root の WARNING のままで、ガードの有無にかかわらず
+        この検査は通る（＝変異テストは実施できない）。SDK が将来、環境変数
+        なしでロガーを DEBUG に落とすようになったときに気づくための歯止め。
+        """
         self.assertGreaterEqual(
             logging.getLogger("anthropic").getEffectiveLevel(), logging.INFO
         )
 
-        # ANTHROPIC_LOG=debug が設定された状態（SDK が import 時に行う設定）を
-        # 再現し、ガードがそれを引き上げ直すことを確認する
+    def test_anthropic_sdk_logger_cannot_emit_debug_payloads(self):
+        """ANTHROPIC_LOG=debug で SDK が送信ペイロード全文を出す経路を塞げていること。
+
+        ANTHROPIC_LOG=debug が設定された状態（SDK が import 時に行う設定）を
+        再現し、ガードがそれを引き上げ直すことを確認する。import 時の挙動が
+        変わっても、DEBUG のまま本番が走らないことを固定する。
+        """
         sdk_logger = logging.getLogger("anthropic")
         original_level = sdk_logger.level
         try:
