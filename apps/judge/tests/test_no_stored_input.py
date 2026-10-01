@@ -200,8 +200,16 @@ class LogsNeverContainInputTests(TestCase):
         self.assertIn("enum", output)
         self.assertNotIn(MARKER, output)
 
-    def test_unexpected_exception_does_not_log_local_variables(self):
-        """想定外の例外のトレースに、ローカル変数の求人テキストが出ないこと。"""
+    def test_unexpected_exception_does_not_log_the_job_text(self):
+        """想定外の例外を記録する経路に、求人テキストが出てこないこと。
+
+        トレース自体にローカル変数は載らないので、守っているのはもっと広く、
+        例外処理が入力を出力する実装になっていないこと。実装が入力をログの
+        引数に混ぜる場合と、例外自身が入力を持っている場合の両方が該当する。
+        後者は logger.exception が例外の文字列表現を出すため避けられないので、
+        入力を持つと分かっている例外型（pydantic の ValidationError）は、
+        この分岐より手前で専用に扱っている。
+        """
         output = self._post_with_api_failure(RuntimeError("boom"))
         self.assertIn("Unexpected error", output)
         self.assertIn("RuntimeError", output)
