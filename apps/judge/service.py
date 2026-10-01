@@ -161,9 +161,7 @@ def _log_token_usage(response) -> None:
         # 見積もりがずれていくため。
         half = INPUT_TOKEN_BUCKET // 2
         input_tokens = _as_int(getattr(usage, "input_tokens", 0))
-        input_bucket = (
-            (input_tokens + half) // INPUT_TOKEN_BUCKET * INPUT_TOKEN_BUCKET
-        )
+        input_bucket = (input_tokens + half) // INPUT_TOKEN_BUCKET * INPUT_TOKEN_BUCKET
         usage_logger.info(
             "token_usage hour=%s model=%s input_%s=%s output=%s cache_read=%s"
             " cache_write=%s",
@@ -299,6 +297,11 @@ def job_offer_risk_assess(
         # ValidationError の文字列表現には不適合だった値そのもの（求人文を
         # 引用した summary など）が input_value として含まれるため、トレースは
         # 出さず、「どの項目がどの理由で落ちたか」だけを残す。
+        #
+        # 求人文を落としているのは、下の内包表記が loc と type だけを取り出して
+        # いること。include_input=False はその二重の保険で、反転させても出力は
+        # 変わらない（＝この引数だけを変異させてもテストは落ちないが、挙動が
+        # 変わらないため想定どおり）。
         logger.error(
             "Response did not satisfy RiskReportSchema: %s",
             [
