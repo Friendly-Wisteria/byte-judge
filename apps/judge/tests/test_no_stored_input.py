@@ -12,7 +12,7 @@ from unittest import mock, skip
 from django.conf import settings
 from django.core.files import uploadedfile
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from .. import forms, service, views
 from .helpers import (
@@ -96,7 +96,8 @@ class UploadNeverTouchesDiskTests(TestCase):
                         "リクエスト処理後も一時ディレクトリにファイルが残っている",
                     )
 
-                # 添えたファイルは読み捨てられ、判定はテキストだけで通る
+                # リクエストが途中で弾かれず、一時ファイルなしで form_valid の処理まで通っている
+                # 判定処理に画像が渡らないことは test_image_input.py で見ている。
                 self.assertContains(response, "危険度")
                 self.assertEqual(
                     created,
@@ -108,9 +109,7 @@ class UploadNeverTouchesDiskTests(TestCase):
     def test_memory_limit_stays_above_the_form_limit(self):
         # form の上限を下回ると、拒否対象のファイルが握り潰されて
         # 「画像サイズが大きすぎます」を返せなくなる
-        self.assertGreater(
-            settings.FILE_UPLOAD_MAX_MEMORY_SIZE, forms.MAX_IMAGE_SIZE
-        )
+        self.assertGreater(settings.FILE_UPLOAD_MAX_MEMORY_SIZE, forms.MAX_IMAGE_SIZE)
 
     @skip(IMAGE_PAUSED)
     @override_settings(VIEW_TEST_MODE=True)
@@ -139,6 +138,32 @@ class UploadNeverTouchesDiskTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(seen.get("type"), "InMemoryUploadedFile")
         self.assertContains(response, "危険度")
+
+
+class JobTextKeepsTheMarkerDetectableTests(SimpleTestCase):
+    """テストに使うJOB_TEXTの検出可能な位置にMARKERが配置されていることを検証。
+
+    このテストがなければ、ログにユーザーの入力が含まれないテストが漏れていてもグリーンになる事故が起こる
+    （test_schema_validation_error_does_not_log_the_offending_value）
+    """
+
+    def test_job_text_starts_with_marker(self):
+        """テストの前提として、JOB_TEXTの冒頭が識別用のMARKERから始まること。
+
+        変異テスト: JOB_TEXT内のMARKERの前に数文字たす。
+        """
+        self.assertTrue(JOB_TEXT.startswith(MARKER))
+
+    def test_job_text_marker_survives_truncation(self):
+        """テストの前提として、デフォルトのValidationErrorの文字列表現で
+        文字数を丸める形式でもマーカー全体が露出すること。
+
+        変異テスト: MARKERの文字数を25文字以上にする / JOB_TEXT内のMARKERを末尾に移し、さらにその後ろに20文字たす
+        """
+        e = schema_validation_error()
+        self.assertIn(
+            MARKER, str(e), "str(e)で、文字数の丸めによってマーカーが消えてしまっている"
+        )
 
 
 @override_settings(VIEW_TEST_MODE=False)

@@ -22,8 +22,13 @@ IMAGE_PAUSED = "画像（スクリーンショット）入力は停止中。再�
 
 # 求人テキストに紛れ込ませる目印。ディスク・ログ・セッションのいずれにも
 # 現れてはいけない。fixtures の文言と偶然一致しないよう一意な文字列にする。
-MARKER = "ZZMARKER7f3a9cZZ"
-JOB_TEXT = f"日給5万円・即日手渡し・Telegramで連絡ください 合言葉:{MARKER}"
+#
+# 目印は短く保ち、JOB_TEXT の先頭に置くこと。入力の一部だけを出す例外やログが
+# あるため（pydantic の ValidationError は input_value を約50バイトに丸める。
+# 丸め方としては value[:n] のように先頭だけ残すものが一般的）、末尾に置いたり
+# 長くすると目印ごと切り落とされ、漏れていても assertNotIn が通ってしまう。
+MARKER = "ZZMARK7"
+JOB_TEXT = f"{MARKER} 日給5万円・即日手渡し・Telegramで連絡ください"
 
 # 利用者に見せない技術的な語。判定不可の案内（文言）と、差し替えたエラー
 # ページ（400 / 403 / 500）で検査する。
@@ -112,7 +117,9 @@ class capture_logs:
         self.stream = io.StringIO()
         self.handler = logging.StreamHandler(self.stream)
         self.handler.setLevel(logging.DEBUG)
-        self.handler.setFormatter(logging.Formatter("%(name)s %(levelname)s %(message)s"))
+        self.handler.setFormatter(
+            logging.Formatter("%(name)s %(levelname)s %(message)s")
+        )
         self._saved = []
         for name in self.LOGGER_NAMES:
             target = logging.getLogger(name)
@@ -195,6 +202,7 @@ def schema_validation_error():
     except pydantic.ValidationError as e:
         return e
     raise AssertionError("ValidationError を再現できていない")
+
 
 # evaluate_prompt コマンドのテストで使うサンプルのテストセット。データ本体
 # （cases.toml）はリポジトリに含めないため、テスト用に最小の構成を持つ。
