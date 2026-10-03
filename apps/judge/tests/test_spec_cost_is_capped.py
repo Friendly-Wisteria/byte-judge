@@ -13,7 +13,7 @@ from unittest import mock
 
 from django.conf import settings
 from django.db import DatabaseError, IntegrityError, connection
-from django.test import Client, TestCase, override_settings
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 
 from .. import quota, views
@@ -180,7 +180,7 @@ class SiteCounterHoldsUnderContentionTests(TestCase):
 # 使用量のログは実 API 経路でしか出ないため、手元の .env に左右されないよう
 # VIEW_TEST_MODE を明示的に落とす（fixtures を返す経路ではログが1行も出ない）。
 @override_settings(VIEW_TEST_MODE=False)
-class TokenUsageIsTraceableTests(TestCase):
+class TokenUsageIsTraceableTests(SimpleTestCase):
     """使ったぶんを後から追えることの検証。
 
     費用は請求が来てから分かるのでは遅い。どのモデルで何トークン使い、

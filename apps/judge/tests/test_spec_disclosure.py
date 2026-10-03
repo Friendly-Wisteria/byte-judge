@@ -3,10 +3,10 @@
 入力を始める前に伝えるべき内容なので、消えたり薄まったりしたら気づけるようにする。
 """
 
-from django.test import TestCase
+from django.test import SimpleTestCase
 
 
-class ExternalTransferNoticeTests(TestCase):
+class ExternalTransferNoticeTests(SimpleTestCase):
     """入力画面の、外部送信の説明の検証。
 
     入力を始める前に伝えるべき内容なので、消えたり薄まったりしたら気づける

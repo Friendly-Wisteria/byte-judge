@@ -10,7 +10,7 @@
 from unittest import mock
 
 import pydantic
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.test import SimpleTestCase, override_settings
 
 from .. import service
 from ..fixtures import FIXTURES
@@ -31,7 +31,7 @@ def _report(**overrides):
     return {**base, **overrides}
 
 
-class MissingInfoIsSurfacedTests(TestCase):
+class MissingInfoIsSurfacedTests(SimpleTestCase):
     """判定材料が足りない場合の扱いの検証。
 
     貼り付けが部分的だと「事業者情報が無い」ように見えるため、それを危険の

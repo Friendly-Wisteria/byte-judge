@@ -5,13 +5,13 @@
 
 from unittest import mock
 
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, override_settings
 
 from .. import service
 from .helpers import MARKER
 
 
-class JobOfferTagsAreNeutralizedTests(TestCase):
+class JobOfferTagsAreNeutralizedTests(SimpleTestCase):
     """求人テキストが囲みタグ <job_offer> の境界を偽装できないことの検証。
 
     求人はマークダウンを含みうるため <job_offer> で囲んで渡している。

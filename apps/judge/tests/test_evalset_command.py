@@ -13,7 +13,7 @@ from unittest import mock
 from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, override_settings
 
 from .. import service
 from ..evalset import dataset as evalset_dataset
@@ -23,7 +23,7 @@ from ..schema import RiskReportSchema
 from .helpers import EVAL_CASES_TOML, eval_cases_toml
 
 
-class EvalCommandTests(TestCase):
+class EvalCommandTests(SimpleTestCase):
     """evaluate_prompt コマンドの検証。
 
     実際に API を叩くと費用が出るので、サービス層を差し替えて配線だけを見る。
@@ -141,7 +141,7 @@ class EvalCommandTests(TestCase):
 
 
 @override_settings(VIEW_TEST_MODE=False)
-class PromptOverrideTests(TestCase):
+class PromptOverrideTests(SimpleTestCase):
     """--prompt で判定プロンプトを差し替えられること。
 
     データセットが非公開で、外部の貢献者は評価を回せない。プロンプトを変える PR は
@@ -250,7 +250,7 @@ class PromptOverrideTests(TestCase):
 
 
 @override_settings(VIEW_TEST_MODE=False)
-class EvalJsonReportTests(TestCase):
+class EvalJsonReportTests(SimpleTestCase):
     """評価結果の JSON 書き出しの検証。
 
     モデルやプロンプトを変えたときの比較は、この JSON を後から読み返して
@@ -324,7 +324,7 @@ class EvalJsonReportTests(TestCase):
 
 
 @override_settings(VIEW_TEST_MODE=False)
-class RunSizeMatchesThePlanTests(TestCase):
+class RunSizeMatchesThePlanTests(SimpleTestCase):
     """実行回数の見積もりと、実際に API を叩く回数が一致することの検証。
 
     評価は実行のたびに費用が出るため、測り直しが効かない。画面に出た回数と
@@ -402,7 +402,7 @@ class RunSizeMatchesThePlanTests(TestCase):
 
 
 @override_settings(VIEW_TEST_MODE=False)
-class SpendingNeedsConfirmationTests(TestCase):
+class SpendingNeedsConfirmationTests(SimpleTestCase):
     """実行前の確認の検証。
 
     ここで止まらないと、意図しない実行の費用がそのまま出る。

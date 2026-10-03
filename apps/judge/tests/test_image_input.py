@@ -9,7 +9,7 @@ import io
 from unittest import mock, skip
 
 from django.conf import settings
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, override_settings
 from PIL import Image
 
 from .. import forms, service, views
@@ -20,7 +20,7 @@ from .helpers import IMAGE_PAUSED, JOB_TEXT, png_at_least, upload
 
 @skip(IMAGE_PAUSED)
 @override_settings(VIEW_TEST_MODE=True)
-class DiscardedOversizedImageIsReportedTests(TestCase):
+class DiscardedOversizedImageIsReportedTests(SimpleTestCase):
     """リクエスト全体のサイズ超過で画像が捨てられた場合の案内の検証。
 
     メモリ専用ハンドラ構成では、上限超過の画像は request.FILES に載らず
@@ -68,7 +68,7 @@ class DiscardedOversizedImageIsReportedTests(TestCase):
 
 
 @override_settings(VIEW_TEST_MODE=True)
-class ImageInputIsClosedTests(TestCase):
+class ImageInputIsClosedTests(SimpleTestCase):
     """画像入力の受け口が閉じていることの検証。
 
     UI をコメントアウトしただけでは、POST に image を含めれば判定まで通って
@@ -117,7 +117,7 @@ class ImageInputIsClosedTests(TestCase):
 
 
 @override_settings(VIEW_TEST_MODE=False)
-class ImageIsConvertedForTheApiTests(TestCase):
+class ImageIsConvertedForTheApiTests(SimpleTestCase):
     """画像を API に渡せる形に変換する処理の検証。
 
     画像入力の UI とフォームは停止中だが、この変換は service 側に残してあり

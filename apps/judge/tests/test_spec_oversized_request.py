@@ -16,7 +16,7 @@ test_spec_no_stored_input.py で見る。ここで見るのは、この経路で
 import urllib.parse
 
 from django.conf import settings
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.test import SimpleTestCase, override_settings
 
 from ..consultation import CONSULTATION_CONTACTS, CONSULTATION_HEADING
 from ..forms import TEXT_MAX_LENGTH, JobOfferRiskAssessForm
@@ -24,7 +24,7 @@ from .helpers import JOB_TEXT, MARKER
 
 
 @override_settings(VIEW_TEST_MODE=True)
-class OversizedTextIsRefusedBeforeTheViewTests(TestCase):
+class OversizedTextIsRefusedBeforeTheViewTests(SimpleTestCase):
     def _post_oversized_text(self):
         # テキスト側のフォームは multipart ではないので、実際の経路に合わせて
         # urlencoded で送る。"あ" は URL エンコード後 9 バイトになる。
@@ -139,7 +139,7 @@ class TextareaMaxLengthTest(SimpleTestCase):
 
 
 @override_settings(VIEW_TEST_MODE=True)
-class TheInputIsHandedBackTests(TestCase):
+class TheInputIsHandedBackTests(SimpleTestCase):
     """弾かれても貼り直しにならないこと、上限が HTML 側に届いていることの検証。
 
     入力欄を空に戻してしまうと、「短くしてもう一度」と案内しても、短くする元の

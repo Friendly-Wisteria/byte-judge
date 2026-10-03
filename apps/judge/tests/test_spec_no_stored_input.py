@@ -7,6 +7,10 @@
 経路ごとの見え方なので、各経路のファイルで見る（上限超過で返る 400 ページは
 test_spec_oversized_request.py）。入力欄にはむしろ戻す約束があるため、
 「どこにも出さない」ではない。
+
+DB に何も書かないこともこのファイルの約束の一部なので、問い合わせが要らない
+クラスは SimpleTestCase にしている（意図せず触れば、そこで落ちる）。残って
+いないことを数えて確かめる3クラスだけは、問い合わせが必要なので TestCase。
 """
 
 import logging
@@ -39,7 +43,7 @@ from .helpers import (
 )
 
 
-class UploadNeverTouchesDiskTests(TestCase):
+class UploadNeverTouchesDiskTests(SimpleTestCase):
     """アップロードされたファイルがディスクに書き出されないことの検証。
 
     画像入力は停止中だが、multipart のパースはフォームより手前で走るため、
@@ -271,7 +275,7 @@ class LogsNeverContainInputTests(TestCase):
 # 使用量のログは実 API 経路でしか出ないため、手元の .env に左右されないよう
 # VIEW_TEST_MODE を明示的に落とす（fixtures を返す経路では1行も出ない）。
 @override_settings(VIEW_TEST_MODE=False)
-class UsageLogKeepsNoInputDerivedDetailTests(TestCase):
+class UsageLogKeepsNoInputDerivedDetailTests(SimpleTestCase):
     """使用量のログに、入力に由来するものが残らないことの検証。
 
     費用の把握にはログを使いたいが、ログは残るものなので、入力の長さや判定した
@@ -465,7 +469,7 @@ class NothingButTheCountIsStoredTests(TestCase):
         )
 
 
-class ResultPageIsNotCachedTests(TestCase):
+class ResultPageIsNotCachedTests(SimpleTestCase):
     """判定結果のページがキャッシュに保存されない指定になっていることの検証。"""
 
     @override_settings(VIEW_TEST_MODE=True)

@@ -35,7 +35,7 @@ from .helpers import (
 
 
 @override_settings(VIEW_TEST_MODE=False)
-class AssessmentFailuresAreClassifiedTests(TestCase):
+class AssessmentFailuresAreClassifiedTests(SimpleTestCase):
     """判定を返せない場合の、理由の振り分けの検証。
 
     UNAVAILABLE と FAILED で画面の案内が変わる（前者は「サービス側の問題なので
@@ -289,7 +289,7 @@ class UnavailableGuidanceTests(SimpleTestCase):
 
 
 @override_settings(VIEW_TEST_MODE=True)
-class InputErrorIsNotUnavailableTests(TestCase):
+class InputErrorIsNotUnavailableTests(SimpleTestCase):
     """入力を直せば通るエラーを、判定不可の案内と混同しないことの検証。
 
     空入力に相談先まで出すと、案内が薄まって本当に判定を受けられないときに
@@ -305,7 +305,7 @@ class InputErrorIsNotUnavailableTests(TestCase):
 
 
 @override_settings(VIEW_TEST_MODE=False)
-class ReceivedVerdictIsNotDiscardedTests(TestCase):
+class ReceivedVerdictIsNotDiscardedTests(SimpleTestCase):
     """受け取れた判定を、後処理の失敗で捨てないことの検証。
 
     判定を返せないときに相談先を出す約束の裏側。判定そのものは成立しているのに

@@ -16,7 +16,13 @@ from datetime import datetime
 from unittest import mock
 
 from django.http import HttpResponse
-from django.test import Client, RequestFactory, TestCase, override_settings
+from django.test import (
+    Client,
+    RequestFactory,
+    SimpleTestCase,
+    TestCase,
+    override_settings,
+)
 
 from .. import quota, service, views
 from .helpers import JOB_TEXT, assert_consultation_is_offered
@@ -78,7 +84,7 @@ class DailyQuotaTests(TestCase):
 
 
 @override_settings(VIEW_TEST_MODE=True)
-class QuotaCookieIsVerifiedTests(TestCase):
+class QuotaCookieIsVerifiedTests(SimpleTestCase):
     """回数カウントの Cookie を書き換えたときの振る舞いの検証。
 
     カウントはブラウザ側の署名付き Cookie だけで持っているため、署名を

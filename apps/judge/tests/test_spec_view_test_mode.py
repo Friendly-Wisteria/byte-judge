@@ -21,7 +21,7 @@ from .helpers import JOB_TEXT
 
 
 @override_settings(VIEW_TEST_MODE=True)
-class WiringTestModeIsAnnouncedTests(TestCase):
+class WiringTestModeIsAnnouncedTests(SimpleTestCase):
     def test_the_warning_tells_the_user_not_to_use_the_result(self):
         """文言が「使わないで」と言い切っていること（存在するだけでは足りない）。"""
         self.assertIn("使用しないでください", views.VIEW_TEST_MODE_WARNING)
