@@ -159,6 +159,24 @@ class EmptyWordingIsRefusedTests(SimpleTestCase):
         with self.assertRaises(pydantic.ValidationError):
             RiskReportSchema.model_validate(_report(advice=""))
 
+    def test_a_signal_without_a_severity_is_refused(self):
+        """深刻度の無い兆候は通さないこと。
+
+        配色は `_SEVERITY_COLOR` を引いて決めるため、既定値を与えると
+        引けない色が出る。必須のまま保つ。
+        """
+        with self.assertRaises(pydantic.ValidationError):
+            RiskReportSchema.model_validate(
+                _report(
+                    signals=[
+                        {
+                            "name": "既存の手口",
+                            "detail": "報道されている手口に似ています",
+                        }
+                    ]
+                )
+            )
+
     def test_whitespace_alone_is_refused(self):
         """空白や改行だけの文字列は、画面では空と変わらないこと。"""
         for field in ("summary", "advice"):
@@ -177,6 +195,43 @@ class EmptyWordingIsRefusedTests(SimpleTestCase):
 
         self.assertEqual(report.summary, "要約です")
         self.assertEqual(report.advice, "助言です")
+
+
+class PartialSignalWordingIsStillShownTests(SimpleTestCase):
+    """兆候の名前や根拠が空でも、判定ごと捨てないことの検証。
+
+    要約と助言は空を止めるが（上のクラス）、兆候は止めない。片方が空でも
+    もう一方が読めれば利用者は何かを持ち帰れるうえ、空の兆候が1件混ざった
+    だけでまともな兆候まで見えなくなるほうが損失が大きい。意図した非対称
+    なので、`NonBlankText` を足されたら落ちるようにしておく（#77）。
+    """
+
+    def test_a_signal_with_a_blank_half_is_kept(self):
+        """名前だけ・根拠だけの兆候も、落とさずに残すこと。
+        変異テスト: schema.Signal の name / detail を NonBlankText にする
+        """
+        report = RiskReportSchema.model_validate(
+            _report(
+                signals=[
+                    {
+                        "name": "",
+                        "severity": Severity.HIGH,
+                        "detail": "報道されている手口に似ています",
+                    },
+                    {
+                        "name": "相場を大幅に超えた報酬",
+                        "severity": Severity.MID,
+                        "detail": "",
+                    },
+                ]
+            )
+        )
+
+        self.assertEqual(len(report.signals), 2)
+        self.assertEqual(report.signals[0].detail, "報道されている手口に似ています")
+        self.assertEqual(report.signals[1].name, "相場を大幅に超えた報酬")
+        # 読めるほうが残っていれば、配色も引ける
+        self.assertTrue(all(signal.bs_color for signal in report.signals))
 
 
 class ColoursMatchTheSeverityTests(SimpleTestCase):

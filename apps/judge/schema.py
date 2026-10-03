@@ -71,6 +71,11 @@ _MISSING_HINT = {
 
 
 class Signal(BaseModel):
+    # name と detail は空でも受け取る（summary / advice とは意図して揃えていない）。
+    # 片方が空でも、もう一方が読めれば利用者は何かを持ち帰れる。空の兆候が1件
+    # 混ざっただけで判定ごと失うほうが損失が大きいので、関所では止めない。
+    # 「signals はあるが全項目が空」だけは落としたいが、起こる確率に対して検知が
+    # 重いため入れていない（#77）。
     name: str = Field(description="シグナル名")
     severity: Severity = Field(description="深刻度")
     detail: str = Field(description="そう判断した根拠")
