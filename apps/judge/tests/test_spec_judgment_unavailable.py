@@ -17,7 +17,7 @@ import anthropic
 from django.db import OperationalError
 from django.test import SimpleTestCase, TestCase, override_settings
 
-from .. import forms, service, views
+from .. import consultation, forms, service, views
 from ..fixtures import FIXTURES
 from ..models import DailyUsage
 from ..schema import RiskReportSchema
@@ -276,6 +276,16 @@ class UnavailableGuidanceTests(SimpleTestCase):
         for label in ("個人の日次上限", "サイト全体の日次上限"):
             with self.subTest(case=label):
                 self.assertIn("0時", self._messages()[label])
+
+    def test_every_contact_reaches_the_message_text(self):
+        """メッセージ側にも、同じ相談先が載っていること。
+
+        サービスが正常に動作しない状況で、公的な相談窓口の紹介が
+        一貫していることを保証する。
+        """
+        for name, _ in consultation.CONSULTATION_CONTACTS:
+            with self.subTest(contact=name):
+                self.assertIn(name, views.CONSULTATION_GUIDE)
 
 
 @override_settings(VIEW_TEST_MODE=True)

@@ -42,16 +42,10 @@ class MissingInfoIsSurfacedTests(TestCase):
     def test_listed_missing_info_forces_the_insufficient_flag(self):
         """不足項目が挙がっていれば、十分フラグは false 側に寄り、重複は畳まれること。"""
         report = RiskReportSchema.model_validate(
-            {
-                "score": 20,
-                "level": "要注意",
-                "summary": "s",
-                "signals": [],
-                "advice": "a",
-                # 不足を挙げながら「十分」と返ってくる矛盾したケース
-                "has_enough_info": True,
-                "missing_info": ["事業者情報", "事業者情報", "仕事内容"],
-            }
+            _report(
+                has_enough_info=True,
+                missing_info=["事業者情報", "事業者情報", "仕事内容"],
+            )
         )
 
         self.assertFalse(report.has_enough_info)
@@ -77,16 +71,7 @@ class MissingInfoIsSurfacedTests(TestCase):
 
     def test_safe_result_is_not_declared_safe(self):
         """兆候が無い場合も「安全」と言い切らないこと（偽陰性は取り返しがつかない）。"""
-        report = RiskReportSchema.model_validate(
-            {
-                "score": 12,
-                "level": "安全",
-                "summary": "s",
-                "signals": [],
-                "advice": "a",
-                "has_enough_info": True,
-            }
-        )
+        report = RiskReportSchema.model_validate(_report(level="安全"))
 
         self.assertEqual(report.level_label, "危険な兆候なし")
 
@@ -104,15 +89,7 @@ class MissingInfoIsSurfacedTests(TestCase):
     def test_insufficient_result_is_not_labeled_as_a_verdict(self):
         """情報不足なら、判定名（安全など）も判定色も表示に使わないこと。"""
         report = RiskReportSchema.model_validate(
-            {
-                "score": 12,
-                "level": "安全",
-                "summary": "s",
-                "signals": [],
-                "advice": "a",
-                "has_enough_info": False,
-                "missing_info": ["事業者情報"],
-            }
+            _report(level="安全", has_enough_info=False, missing_info=["事業者情報"])
         )
 
         self.assertEqual(report.level_label, "情報不足")
