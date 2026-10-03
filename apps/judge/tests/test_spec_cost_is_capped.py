@@ -186,7 +186,7 @@ class TokenUsageIsTraceableTests(TestCase):
     費用は請求が来てから分かるのでは遅い。どのモデルで何トークン使い、
     プロンプトキャッシュに当たったかが、ログだけで追えるようにしておく。
     記録する項目を増やさないこと（入力に由来する情報を残さない）は
-    test_usage_log.py 側で見る。
+    test_spec_no_stored_input.py 側で見る。
     """
 
     def test_model_and_token_counts_are_recorded(self):

@@ -292,3 +292,35 @@ class InputErrorIsNotUnavailableTests(TestCase):
         self.assertContains(response, forms.NO_INPUT_ERROR)
         self.assertNotContains(response, "判定をお届けできませんでした")
         self.assertNotContains(response, "警察相談専用ダイヤル #9110")
+
+
+@override_settings(VIEW_TEST_MODE=False)
+class ReceivedVerdictIsNotDiscardedTests(TestCase):
+    """受け取れた判定を、後処理の失敗で捨てないことの検証。
+
+    判定を返せないときに相談先を出す約束の裏側。判定そのものは成立しているのに
+    「返せなかった」側に倒すと、要らない案内を出したうえで判定を失う。
+    """
+
+    def test_a_failing_usage_log_does_not_change_the_verdict(self):
+        """使用量のログで例外が出ても、判定の結果を捨てないこと。
+
+        ログの組み立ては API 呼び出しの try の中にある。ここで投げると
+        API 障害として扱われ、受け取れていた判定が失われる。
+        """
+
+        class ExplodingUsage:
+            def __getattr__(self, name):
+                raise RuntimeError("boom")
+
+        response = mock.Mock(
+            stop_reason="end_turn",
+            model="claude-sonnet-5",
+            parsed_output=RiskReportSchema.model_validate(FIXTURES["danger"]),
+            usage=ExplodingUsage(),
+        )
+        with mock.patch.object(service.anthropic, "Anthropic") as client_class:
+            client_class.return_value.messages.parse.return_value = response
+            result = service.job_offer_risk_assess(JOB_TEXT)
+
+        self.assertIsInstance(result, RiskReportSchema)

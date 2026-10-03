@@ -11,6 +11,7 @@ test_spec_oversized_request.py）。入力欄にはむしろ戻す約束があ�
 
 import logging
 import os
+import re
 import tempfile
 from datetime import datetime, timedelta
 from unittest import mock, skip
@@ -29,10 +30,12 @@ from .helpers import (
     JOB_TEXT,
     MARKER,
     api_status_error,
+    assess_with_usage,
     capture_logs,
     png_at_least,
     schema_validation_error,
     upload,
+    usage_line,
 )
 
 
@@ -263,6 +266,89 @@ class LogsNeverContainInputTests(TestCase):
         request = response.wsgi_request
         cleansed = SafeExceptionReporterFilter().get_post_parameters(request)
         self.assertNotIn(MARKER, str(dict(cleansed)))
+
+
+# 使用量のログは実 API 経路でしか出ないため、手元の .env に左右されないよう
+# VIEW_TEST_MODE を明示的に落とす（fixtures を返す経路では1行も出ない）。
+@override_settings(VIEW_TEST_MODE=False)
+class UsageLogKeepsNoInputDerivedDetailTests(TestCase):
+    """使用量のログに、入力に由来するものが残らないことの検証。
+
+    費用の把握にはログを使いたいが、ログは残るものなので、入力の長さや判定した
+    時刻の分秒といった「入力や利用者をたどれるもの」は落としてから出す。記録する
+    項目が増えていないことも、ここで固定する。
+
+    かかった費用をログから追えること自体は test_spec_cost_is_capped.py で見る。
+    """
+
+    def test_input_tokens_are_rounded_to_a_hundred(self):
+        """入力トークン数は、そのまま残さないこと。
+
+        input_tokens は貼り付けられた求人文の長さの近似値になる。判定プロンプトは
+        キャッシュされて cache_read 側に回るため、2回目以降はほぼ求人文の分だけに
+        なり、入力の長さがそのまま残ってしまう。
+        """
+        for raw, rounded in [(4821, "4800"), (4850, "4900"), (49, "0"), (150, "200")]:
+            with self.subTest(input_tokens=raw):
+                line = usage_line(
+                    self,
+                    assess_with_usage(
+                        input_tokens=raw, output_tokens=1, cache_read_input_tokens=0
+                    ),
+                )
+                self.assertIn(f"input_100={rounded}", line)
+                self.assertNotIn(str(raw), line)
+
+    def test_timestamp_is_rounded_to_the_hour(self):
+        """分・秒を残さないこと（判定した時刻から利用者をたどれないように）。"""
+        line = usage_line(
+            self,
+            assess_with_usage(
+                input_tokens=1, output_tokens=1, cache_read_input_tokens=0
+            ),
+        )
+
+        hour = re.search(r"hour=(\S+)", line).group(1)
+        self.assertRegex(hour, r"^\d{4}-\d{2}-\d{2}T\d{2}\+09:00$")
+
+    def test_only_the_agreed_fields_are_recorded(self):
+        """入力文字数など、取り決めにない項目が増えていないこと。"""
+        line = usage_line(
+            self,
+            assess_with_usage(
+                input_tokens=1234, output_tokens=567, cache_read_input_tokens=890
+            ),
+        )
+
+        self.assertEqual(
+            re.findall(r"(\w+)=", line),
+            ["hour", "model", "input_100", "output", "cache_read", "cache_write"],
+        )
+
+    def test_the_job_text_never_reaches_the_usage_log(self):
+        output = assess_with_usage(
+            input_tokens=1234, output_tokens=567, cache_read_input_tokens=890
+        )
+
+        self.assertIn("token_usage", output)
+        self.assertNotIn(MARKER, output)
+        self.assertNotIn(str(len(JOB_TEXT)), usage_line(self, output))
+
+    def test_usage_format_carries_no_precise_timestamp(self):
+        """書式が秒までの時刻を足すと、丸めた意味が無くなる。"""
+        logger_conf = settings.LOGGING["loggers"]["apps.judge.usage"]
+        handler = settings.LOGGING["handlers"][logger_conf["handlers"][0]]
+        fmt = settings.LOGGING["formatters"][handler["formatter"]]["format"]
+
+        self.assertNotIn("asctime", fmt)
+
+    def test_nothing_is_written_to_the_database(self):
+        """使用量のために、保存するモデルが増えていないこと。"""
+        from django.apps import apps as django_apps
+
+        models = {m.__name__ for m in django_apps.get_app_config("judge").get_models()}
+
+        self.assertEqual(models, {"DailyUsage"})
 
 
 @override_settings(VIEW_TEST_MODE=True)

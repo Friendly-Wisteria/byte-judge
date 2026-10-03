@@ -12,6 +12,7 @@
 守っている約束:
 
 - test_spec_no_stored_input.py       入力がディスク・ログ・セッション・キャッシュに残らないこと・
+                                     使用量のログに入力に由来するものが出ないこと・
                                      数えるために保存するのは日付と件数だけであること
 - test_spec_prompt_injection.py      求人テキストが囲みタグの境界を偽装できないこと
 - test_spec_result_display.py        情報不足の扱い、「安全」と言い切らない表示、
@@ -38,10 +39,8 @@
 - test_repo_release_version.py       pyproject.toml のバージョンと、リリースタグの整合
 - test_repo_package_anthropic.py     anthropic SDK の更新で、こちらの手当てが要るかの検知
 
-接頭辞が付いていない2件:
+接頭辞が付いていない1件:
 
-- test_usage_log.py                  使用量のログに入力に由来するものが残らないこと
-                                     （test_spec_no_stored_input.py への合流は段階3）
 - test_image_input.py                画像入力。停止中の機能なので、再開（#26）まで実装の単位で残す
 
 共有の道具（目印の文字列・ログ収集・SDK 例外の生成）は helpers.py にある。
