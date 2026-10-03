@@ -48,7 +48,7 @@ class OversizedTextIsRefusedBeforeTheViewTests(TestCase):
         文字（DATA_UPLOAD_MAX_MEMORY_SIZE を urlencoded で超える量）を送った
         場合だけだが、届いた人に案内が無いままにはしない。
 
-        画面そのものの検証は test_error_pages.py にある。ここでは「この経路から
+        画面そのものの検証は test_spec_error_pages.py にある。ここでは「この経路から
         あの画面に届く」ことだけを見る。
         変異テスト: config.urls の handler400 を外す
         """

@@ -37,8 +37,7 @@ MAX_LENGTH_ERROR = (
     "%(limit_value)s文字以内にしてください。\n"
     "入力欄には、送った文章がそのまま残っています。仕事内容・報酬・連絡方法が"
     "書かれた部分を残して、要らない部分を削るか、募集文の部分だけを貼り直して"
-    "ください。\n\n"
-    + CONSULTATION_GUIDE
+    "ください。\n\n" + CONSULTATION_GUIDE
 )
 
 

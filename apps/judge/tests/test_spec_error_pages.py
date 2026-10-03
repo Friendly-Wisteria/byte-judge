@@ -1,4 +1,4 @@
-"""view に届かない経路でも、相談先が画面に出ることの検証（#50）。
+"""差し替えたエラーページに、相談先が出ることの検証（#50）。
 
 判定を返せないときに相談先を添える約束は、views 側の案内（_unavailable）と
 500 ページで守っている。ただし Django が view より手前で弾く経路（CSRF 検証の
@@ -6,6 +6,7 @@
 英語のページが返っていた。
 
 ここでは差し替えた画面そのものと、その画面に実際に届く経路の両方を見る。
+判定の経路に載らない例外で出る 500 ページも、守る約束は同じなのでここで見る。
 """
 
 from django.template import loader
@@ -161,3 +162,61 @@ class TheErrorRoutesReachTheReplacedPagesTests(SimpleTestCase):
         response = self.client.get("/no-such-page/")
 
         self.assertRedirects(response, "/", status_code=302)
+
+
+class ServerErrorPageOffersConsultationTests(SimpleTestCase):
+    """素の 500 ページの差し替えの検証。
+
+    判定の経路に載らない想定外の例外では Django の既定の 500 ページが返る。
+    そこにも相談先が出ること、そして相談先が consultation.py から来ている
+    こと（片方だけ古くならないこと）を見る。
+
+    server_error は context も request も渡さずに render() するため、
+    テストも同じ条件で呼ぶ。テストクライアント経由にすると DEBUG や
+    ALLOWED_HOSTS の影響が混ざり、何を見ているのかがぼやける。
+    """
+
+    def _render(self):
+        """server_error と同じ条件で 500.html を描画する。"""
+        return loader.get_template("500.html").render()
+
+    def test_every_contact_reaches_the_page(self):
+        """500ページに、相談先の情報が掲載されていること。
+
+        実装のミスなどで、正常に動作していない時に、
+        公的な窓口と、どんな場合に利用するかを案内することを保証する。
+        """
+        html = self._render()
+        for name, when in consultation.CONSULTATION_CONTACTS:
+            with self.subTest(contact=name):
+                self.assertIn(name, html)
+                self.assertIn(when, html)
+
+    def test_the_heading_reaches_the_page(self):
+        """相談を促す一文も、番号と一緒に出ること。
+
+        番号を並べるだけでは、自分が相談してよい立場なのか判断がつかない。
+        声をかける一文が落ちると、案内の性格そのものが変わる。
+        """
+        self.assertIn(consultation.CONSULTATION_HEADING, self._render())
+
+    def test_every_contact_reaches_the_message_text(self):
+        """メッセージ側にも、同じ相談先が載っていること。
+
+        サービスが正常に動作しない状況で、公的な相談窓口の紹介が
+        一貫していることを保証する。
+        """
+        for name, _ in consultation.CONSULTATION_CONTACTS:
+            with self.subTest(contact=name):
+                self.assertIn(name, views.CONSULTATION_GUIDE)
+
+    def test_no_technical_detail_leaks_onto_the_page(self):
+        """500 ページにも、内部情報を出さないこと。
+
+        この画面は DB 障害で出ることが多い。接続先や例外クラス名が載っても
+        利用者には手がかりにならず、構成を外に教えることになるだけ。
+        """
+        html = self._render()
+        for token in FORBIDDEN_ON_THE_ERROR_PAGE:
+            with self.subTest(token=token):
+                self.assertNotIn(token, html)

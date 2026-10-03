@@ -2,16 +2,33 @@
 
 情報が足りないときに判定が付いたように読ませないこと、兆候が無い場合も
 「安全」と言い切らないことを確認する。
+
+あわせて、LLM の出力を画面に載せる前の関所（schema.py）が、画面の見え方を
+崩す値（範囲外の危険度・空の文言・対応の無い配色）を通さないことを見る。
 """
 
 from unittest import mock
 
-from django.test import TestCase, override_settings
+import pydantic
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from .. import service
 from ..fixtures import FIXTURES
-from ..schema import RiskReportSchema
+from ..schema import Level, MissingInfo, RiskReportSchema, Severity, Signal
 from .helpers import JOB_TEXT
+
+
+def _report(**overrides):
+    """妥当な判定 JSON に、確かめたい値だけを上書きして作る。"""
+    base = {
+        "score": 50,
+        "level": "要注意",
+        "summary": "要約",
+        "signals": [],
+        "advice": "助言",
+        "has_enough_info": True,
+    }
+    return {**base, **overrides}
 
 
 class MissingInfoIsSurfacedTests(TestCase):
@@ -123,3 +140,108 @@ class MissingInfoIsSurfacedTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "この文章だけでは、まだ判断しきれません")
+
+
+class ScoreStaysInRangeTests(SimpleTestCase):
+    """危険度の値域の検証。
+
+    score は画面のバーの長さになる。範囲外を通すと、バーがはみ出したり
+    消えたりして、危険度の見え方が実際とずれる。
+    """
+
+    def test_both_ends_of_the_range_are_accepted(self):
+        for score in (0, 100):
+            with self.subTest(score=score):
+                report = RiskReportSchema.model_validate(_report(score=score))
+                self.assertEqual(report.score, score)
+
+    def test_a_score_outside_the_range_is_refused(self):
+        for score in (-1, 101):
+            with (
+                self.subTest(score=score),
+                self.assertRaises(pydantic.ValidationError),
+            ):
+                RiskReportSchema.model_validate(_report(score=score))
+
+
+class EmptyWordingIsRefusedTests(SimpleTestCase):
+    """要約と助言が空でないことの検証。
+
+    どちらも画面の主役で、空のまま出すと「判定は出ているのに何も書かれて
+    いない」画面になる。判定を返せなかったときの案内とも見分けがつかない。
+
+    空白だけの文字列も同じ見え方になるため、前後の空白を取り除いてから
+    長さを見ている（schema.NonBlankText）。
+    """
+
+    def test_an_empty_summary_is_refused(self):
+        with self.assertRaises(pydantic.ValidationError):
+            RiskReportSchema.model_validate(_report(summary=""))
+
+    def test_an_empty_advice_is_refused(self):
+        with self.assertRaises(pydantic.ValidationError):
+            RiskReportSchema.model_validate(_report(advice=""))
+
+    def test_whitespace_alone_is_refused(self):
+        """空白や改行だけの文字列は、画面では空と変わらないこと。"""
+        for field in ("summary", "advice"):
+            for value in (" ", "\n\n", "　"):  # 半角・改行・全角
+                with (
+                    self.subTest(field=field, value=repr(value)),
+                    self.assertRaises(pydantic.ValidationError),
+                ):
+                    RiskReportSchema.model_validate(_report(**{field: value}))
+
+    def test_surrounding_whitespace_is_trimmed(self):
+        """通る値からは、前後の空白が取り除かれること。"""
+        report = RiskReportSchema.model_validate(
+            _report(summary="  要約です\n", advice="\t助言です  ")
+        )
+
+        self.assertEqual(report.summary, "要約です")
+        self.assertEqual(report.advice, "助言です")
+
+
+class ColoursMatchTheSeverityTests(SimpleTestCase):
+    """深刻度・判定ラベルと配色の対応の検証。
+
+    配色は「どれくらい危ないか」を最初に伝える部分。対応がずれると、
+    深刻なシグナルが穏やかな色で出る。
+    """
+
+    def test_each_severity_keeps_its_colour(self):
+        expected = {
+            Severity.HIGH: "danger",
+            Severity.MID: "warning",
+            Severity.LOW: "secondary",
+        }
+        for severity, colour in expected.items():
+            with self.subTest(severity=severity.value):
+                signal = Signal(name="n", severity=severity, detail="d")
+                self.assertEqual(signal.bs_color, colour)
+
+    def test_no_severity_is_left_without_a_colour(self):
+        """深刻度が増えたとき、対応表への追加漏れをここで気づけるようにする。"""
+        for severity in Severity:
+            with self.subTest(severity=severity.value):
+                signal = Signal(name="n", severity=severity, detail="d")
+                self.assertTrue(signal.bs_color)
+
+    def test_each_level_keeps_its_colour(self):
+        expected = {
+            Level.DANGER: "danger",
+            Level.CAUTION: "warning",
+            Level.SAFE: "success",
+        }
+        for level, colour in expected.items():
+            with self.subTest(level=level.value):
+                report = RiskReportSchema.model_validate(_report(level=level.value))
+                self.assertEqual(report.bs_color, colour)
+
+    def test_no_missing_info_item_is_left_without_a_hint(self):
+        """不足項目が増えたとき、貼り足しの案内の追加漏れに気づけるようにする。"""
+        report = RiskReportSchema.model_validate(
+            _report(missing_info=[item.value for item in MissingInfo])
+        )
+
+        self.assertEqual(len(report.missing_info_hints), len(MissingInfo))

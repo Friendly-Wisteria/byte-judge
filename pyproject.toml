@@ -49,4 +49,4 @@ ignore = [
 # 読んで確かめる。print は意図的に残している。出力するのは合成した求人文に対する
 # 応答で、利用者の入力は通らないため、T20 を入れた理由（入力内容が標準出力に
 # 出るのを防ぐ）には触れない。
-"apps/judge/tests/test_package_anthropic.py" = ["T201"]
+"apps/judge/tests/test_repo_package_anthropic.py" = ["T201"]

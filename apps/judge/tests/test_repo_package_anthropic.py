@@ -9,7 +9,7 @@ Dependabot が anthropic の更新 PR を作ったときに、こちらのコー
    費用が出るため既定ではスキップし、SDK の検証時に開発環境で手動実行する。
 
        ANTHROPIC_SDK_TEST=True uv run python manage.py test \
-           apps.judge.tests.test_package_anthropic
+           apps.judge.tests.test_repo_package_anthropic
 
 2 の実行には環境変数 ANTHROPIC_API_KEY が必要（settings ではなく SDK が直接
 読む）。モデルは既定で claude-haiku-4-5 を使い、ANTHROPIC_SDK_TEST_MODEL で

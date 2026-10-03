@@ -321,7 +321,7 @@ ALLOWED_HOSTS=example.com,www.example.com
 ### 3. データベースを設定する（`DATABASE_URL`）
 
 `DATABASE_URL` には PostgreSQL と SQLite のどちらも指定できます（どちらの形式も
-受け付けることは `apps/judge/tests/test_deployment_settings.py` で固定しています）。
+受け付けることは `apps/judge/tests/test_spec_deployment_settings.py` で固定しています）。
 開発環境（`DEBUG=True`）で未設定のときは、手元の SQLite にフォールバックします。
 
 ```dotenv

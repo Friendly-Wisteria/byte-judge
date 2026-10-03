@@ -141,7 +141,7 @@ FILE_UPLOAD_HANDLERS = [
 # forms.MAX_IMAGE_SIZE（5MB）超の画像は form 側で拒否するが、その判定は
 # multipart のパース後に行われる。ここを form の上限より大きく取ることで、
 # 拒否対象のファイルもメモリ上で受け切り、正しいエラーメッセージを返せる。
-# （大小関係は apps/judge/tests/test_no_stored_input.py で検証している）
+# （大小関係は apps/judge/tests/test_spec_no_stored_input.py で検証している）
 FILE_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024  # 6MB
 
 # LOGGING関係

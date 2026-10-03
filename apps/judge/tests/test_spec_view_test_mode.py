@@ -4,11 +4,13 @@
 見た目は本物の判定と区別がつかないため、「これは判定結果ではない」と告げる
 警告バナーだけが誤認を防いでいる。バナーが消えても結果表示自体は成立して
 しまうので、入口（GET）と結果表示（POST）の両方で出ることを確かめる。
+
+あわせて、選ばれる見本そのものが全件画面に出せることを見る。
 """
 
 from unittest import mock
 
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from .. import views
 from ..fixtures import FIXTURES
@@ -55,3 +57,38 @@ class RealJudgmentIsNotLabelledAsASampleTests(TestCase):
 
         self.assertIsNotNone(response.context.get("result"))
         self.assertNotContains(response, views.VIEW_TEST_MODE_WARNING)
+
+
+class EveryFixtureCanBeDisplayedTests(SimpleTestCase):
+    """配線テストモードの見本が、全件そのまま画面に出せることの検証。
+
+    VIEW_TEST_MODE は FIXTURES からランダムに1件選ぶ。1件だけ壊れていても、
+    その1件が選ばれたときにしか分からず、再現もしにくい。全件をここで通す。
+    """
+
+    def test_every_fixture_passes_the_schema(self):
+        for name, data in FIXTURES.items():
+            with self.subTest(fixture=name):
+                RiskReportSchema.model_validate(data)
+
+    def test_every_fixture_has_something_to_show(self):
+        """画面に出す3点（ラベル・配色・要約）が埋まっていること。"""
+        for name, data in FIXTURES.items():
+            with self.subTest(fixture=name):
+                report = RiskReportSchema.model_validate(data)
+                self.assertTrue(report.level_label)
+                self.assertTrue(report.bs_color)
+                self.assertTrue(report.summary)
+
+    def test_the_fixtures_cover_every_way_a_result_can_look(self):
+        """見本が、画面の見え方を全通り持っていること。
+
+        配線テストは色とラベルの目視確認が目的なので、どれかの見え方の
+        見本が無いと、その経路だけ誰の目にも触れないまま公開される。
+        """
+        labels = {
+            RiskReportSchema.model_validate(data).level_label
+            for data in FIXTURES.values()
+        }
+
+        self.assertEqual(labels, {"危険", "要注意", "危険な兆候なし", "情報不足"})

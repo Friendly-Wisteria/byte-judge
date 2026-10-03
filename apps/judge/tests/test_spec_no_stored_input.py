@@ -271,15 +271,19 @@ class SessionNeverContainsInputTests(TestCase):
         self.assertContains(response, "危険度")
 
         # セッションの中身
-        self.assertNotIn(MARKER, str(dict(self.client.session.items())))
+        self.assertNotIn(
+            MARKER,
+            str(dict(self.client.session.items())),
+            "セッションに入力値が含まれる",
+        )
 
         # クッキー（messages は既定で CookieStorage に載る）
         for cookie in response.cookies.values():
-            self.assertNotIn(MARKER, cookie.value)
+            self.assertNotIn(MARKER, cookie.value, "Cookieに入力値が含まれる")
 
         # 画面に出すメッセージ
         for message in response.context["messages"]:
-            self.assertNotIn(MARKER, str(message))
+            self.assertNotIn(MARKER, str(message), "画面上の出力に入力値が含まれる")
 
     def test_no_session_row_is_created(self):
         """そもそもセッションが作られないこと（＝DB に何も書かれないこと）。"""

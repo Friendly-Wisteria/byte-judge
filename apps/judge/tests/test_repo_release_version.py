@@ -4,13 +4,13 @@ pyproject.toml上のバージョンが、リリースタグと整合するかを
 # ローカルでの検証方法
 ```bash
 # 変数なし → skip されること（緑ではなく skip と表示されるか）
-uv run python manage.py test apps.judge.tests.test_release_version --verbosity 2
+uv run python manage.py test apps.judge.tests.test_repo_release_version --verbosity 2
 
 # 一致 → pass
-RELEASE_TAG=v0.1.0 uv run python manage.py test apps.judge.tests.test_release_version
+RELEASE_TAG=v0.1.0 uv run python manage.py test apps.judge.tests.test_repo_release_version
 
 # 不一致 → 必ず fail すること
-RELEASE_TAG=v9.9.9 uv run python manage.py test apps.judge.tests.test_release_version
+RELEASE_TAG=v9.9.9 uv run python manage.py test apps.judge.tests.test_repo_release_version
 
 uv run ruff check .
 ```
