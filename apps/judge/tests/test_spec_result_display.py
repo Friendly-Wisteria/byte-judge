@@ -270,10 +270,65 @@ class ColoursMatchTheSeverityTests(SimpleTestCase):
                 report = RiskReportSchema.model_validate(_report(level=level.value))
                 self.assertEqual(report.bs_color, colour)
 
-    def test_no_missing_info_item_is_left_without_a_hint(self):
-        """不足項目が増えたとき、貼り足しの案内の追加漏れに気づけるようにする。"""
+
+class MissingInfoHintsMatchTheItemsTests(SimpleTestCase):
+    """不足項目と、貼り足しの案内の対応の検証。
+
+    情報不足の結果で、このアプリがいちばん価値を出すのは「どこを貼り足せば
+    判定できるか」を伝える導線。案内が欠けていたり、別の項目のものが出ると、
+    利用者は言われたとおりに貼り足しても不足が埋まらず、2回目も情報不足になる。
+    """
+
+    def _hints(self):
+        """全項目を不足として挙げたときの、ラベル→案内の対応を返す。"""
         report = RiskReportSchema.model_validate(
             _report(missing_info=[item.value for item in MissingInfo])
         )
+        return report.missing_info_hints
 
-        self.assertEqual(len(report.missing_info_hints), len(MissingInfo))
+    def test_no_missing_info_item_is_left_without_a_hint(self):
+        """MissingInfoと案内の対応表に、数の上で過不足がないこと
+
+        項目を増やしたときの、対応表への追加漏れに気づけるようにする。
+        気づかせているのは schema._MISSING_HINT[item] の KeyError で、下の
+        件数の比較ではない（内包表記は入力1件につき必ず1件返すため）。件数の
+        比較のほうは「挙がった項目を黙って捨てないこと」の検査にあたる。
+        変異テスト: MissingInfo に項目を足して _MISSING_HINT には足さない /
+        _reconcile_missing_info に、対応の無い項目を捨てる処理を入れる
+        """
+        self.assertEqual(len(self._hints()), len(MissingInfo))
+
+    def test_every_hint_tells_the_user_what_to_paste(self):
+        """不足している項目のラベルと、具体的に何を足せばいいかの説明が明記されること。
+
+        どちらかが空だと片方だけの行になり、「貼り足してください」と言いながら
+        何を足せばよいかが利用者に渡らない。
+        変異テスト: _MISSING_HINT のどれかの文言を "" にする /
+        MissingInfo のどれかの値を "" にする
+        """
+        for hint in self._hints():
+            with self.subTest(label=hint["label"]):
+                self.assertTrue(hint["label"].strip())
+                self.assertTrue(hint["hint"].strip())
+
+    def test_each_hint_points_at_its_own_item(self):
+        """ラベルと案内の対応がずれていないこと。
+
+        対応表のキーと文言がコピペでずれても、件数も KeyError も変わらないため
+        上の2件では気づけない。文言そのものは書き写さず（二重管理になる）、
+        ずれたら必ず壊れる語だけを項目ごとに1つ見る。
+        変異テスト: _MISSING_HINT の値を、隣の項目のものと入れ替える
+        """
+        keyword = {
+            MissingInfo.OPERATOR: "募集元",
+            MissingInfo.JOB_DETAIL: "仕事",
+            MissingInfo.PAY: "時給",
+            MissingInfo.WORKPLACE: "勤務地",
+            MissingInfo.CONTACT: "連絡先",
+        }
+        hints = {hint["label"]: hint["hint"] for hint in self._hints()}
+
+        for item in MissingInfo:
+            with self.subTest(item=item.value):
+                # 項目を増やしたときは、ここも KeyError で気づく
+                self.assertIn(keyword[item], hints[item.value])

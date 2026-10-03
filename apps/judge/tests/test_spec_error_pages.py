@@ -97,6 +97,12 @@ class TheErrorRoutesReachTheReplacedPagesTests(SimpleTestCase):
 
     DEBUG=True では Django が開発用の画面を出すため、本番と同じ DEBUG=False で
     確かめる。
+
+    500 だけは経路を見ていない。本番でここに来るのは想定していない例外のときだけ
+    なので、経路を踏むにはテスト専用に例外を投げる URL を足すことになる。それは
+    Django 既定の server_error の挙動を、本番に無い足場越しに確かめているだけで、
+    守りたい約束とは別物になる。差し替えが効いていること自体は、上のクラスの描画で
+    見ている（#77）。
     """
 
     def test_a_csrf_failure_offers_consultation(self):
