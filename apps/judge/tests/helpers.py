@@ -7,13 +7,15 @@ import io
 import logging
 import math
 import os
+from unittest import mock
 
 import anthropic
 import pydantic
 from django.core.files.uploadedfile import SimpleUploadedFile
 from PIL import Image
 
-from .. import views
+from .. import service, views
+from ..fixtures import FIXTURES
 from ..schema import RiskReportSchema
 
 # 画像入力の停止にともない眠らせているテストの理由。機能を再開するときは
@@ -240,3 +242,29 @@ def eval_cases_toml(**counts):
                 f'text = "募集文 {category} {nth}"\n'
             )
     return "\n".join(blocks)
+
+
+def assess_with_usage(**usage):
+    """使用量つきの応答を返す API で判定を1回走らせ、出たログを返す。
+
+    使用量のログは複数の約束から見るため（費用が追えること・入力に由来する
+    情報を残さないこと）、応答の組み立てはここに置く。
+    """
+    response = mock.Mock(
+        stop_reason="end_turn",
+        model="claude-sonnet-5",
+        parsed_output=RiskReportSchema.model_validate(FIXTURES["danger"]),
+        usage=mock.Mock(**usage),
+    )
+    with mock.patch.object(service.anthropic, "Anthropic") as client_class:
+        client_class.return_value.messages.parse.return_value = response
+        with capture_logs() as logs:
+            service.job_offer_risk_assess(JOB_TEXT)
+    return logs.text
+
+
+def usage_line(test, output):
+    """使用量のログが1行だけ出ていることを確かめて、その行を返す。"""
+    lines = [line for line in output.splitlines() if "token_usage" in line]
+    test.assertEqual(len(lines), 1, "使用量のログが1行だけ出ていない")
+    return lines[0]

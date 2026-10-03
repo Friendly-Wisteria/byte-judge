@@ -1,27 +1,25 @@
 """1日の判定回数の上限の回帰テスト。
 
-個人の枠は署名付き Cookie だけで数え、費用の歯止めはサイト全体の枠に置いている。
-上限が効くことに加えて、回復・改ざん・保存しないことを確認する。
+ここで見るのは個人の枠（署名付き Cookie だけで数える）。上限が効くことに加えて、
+日付で回復すること・改ざんで増やせないこと・壊れた Cookie で締め出さないことを
+確認する。
+
+費用の歯止めとしてのサイト全体の枠は test_spec_cost_is_capped.py、数えるために
+保存するものが日付と件数だけであることは test_spec_no_stored_input.py で見る。
 
 断るときに相談先が出ることも見るが、案内の文言そのものは
 test_spec_judgment_unavailable.py が本体。ここでは「この経路からあの案内に届く」
 ことだけを見る。
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest import mock
 
-from django.conf import settings
-from django.db import DatabaseError, IntegrityError, connection
 from django.http import HttpResponse
 from django.test import Client, RequestFactory, TestCase, override_settings
-from django.test.utils import CaptureQueriesContext
 
 from .. import quota, service, views
-from ..fixtures import FIXTURES
-from ..models import DailyUsage
-from ..schema import RiskReportSchema
-from .helpers import JOB_TEXT, MARKER, assert_consultation_is_offered
+from .helpers import JOB_TEXT, assert_consultation_is_offered
 
 
 class DailyQuotaTests(TestCase):
@@ -29,7 +27,7 @@ class DailyQuotaTests(TestCase):
 
     サーバー側に何も持たない方針のため、カウントは署名付き Cookie だけで
     行っている。上限が効くことに加えて、日付で回復すること・判定を受け取れて
-    いないときに枠を減らさないこと・Cookie に入力内容が乗らないことを見る。
+    いないときに枠を減らさないことを見る。
     """
 
     def _judge(self):
@@ -77,19 +75,6 @@ class DailyQuotaTests(TestCase):
         # 一度も判定を受け取っていないので、枠は満額残っている
         with override_settings(VIEW_TEST_MODE=True):
             self.assertContains(self._judge(), "危険度")
-
-    @override_settings(VIEW_TEST_MODE=True)
-    def test_counting_leaves_nothing_but_a_hardened_cookie(self):
-        """カウントのために、入力内容やサーバー側の行が増えていないこと。"""
-        from django.contrib.sessions.models import Session
-
-        response = self._judge()
-
-        cookie = response.cookies[quota.COOKIE_NAME]
-        self.assertNotIn(MARKER, cookie.value)
-        self.assertTrue(cookie["httponly"])
-        self.assertEqual(cookie["samesite"], "Lax")
-        self.assertEqual(Session.objects.count(), 0, "セッション行が作成されている")
 
 
 @override_settings(VIEW_TEST_MODE=True)
@@ -213,180 +198,3 @@ class QuotaCookieIsVerifiedTests(TestCase):
 
                 cookie = response.cookies[quota.COOKIE_NAME]
                 self.assertEqual(bool(cookie["secure"]), secure)
-
-
-@override_settings(VIEW_TEST_MODE=False, SITE_DAILY_LIMIT=2)
-class SiteDailyLimitTests(TestCase):
-    """サイト全体の1日の上限の検証。
-
-    個人の枠（Cookie）は消せば戻るため、月額の利用上限を1日で使い切られる
-    経路が残る。全体の枠でその日のうちに止まること、止まったあとは API を
-    叩かないこと（＝費用が出ないこと）を見る。
-    """
-
-    def setUp(self):
-        self.report = RiskReportSchema.model_validate(FIXTURES["danger"])
-
-    def _judge(self, client=None):
-        with mock.patch.object(
-            views, "job_offer_risk_assess", return_value=self.report
-        ) as assess:
-            response = (client or self.client).post(
-                "/", {"mode": "text", "text": JOB_TEXT}
-            )
-        return response, assess
-
-    def test_limit_applies_across_visitors(self):
-        """枠が尽きたら、Cookie を持たない別の利用者でも断られること。"""
-        for i in range(settings.SITE_DAILY_LIMIT):
-            with self.subTest(nth=i + 1):
-                response, _ = self._judge(Client())
-                self.assertContains(response, "危険度")
-
-        response, assess = self._judge(Client())
-
-        self.assertIsNone(response.context.get("result"))
-        self.assertContains(response, "あなたの使いすぎではありません")
-        assert_consultation_is_offered(self, response)
-        # 枠を取れなかった判定は API に届かない（＝費用が出ない）
-        assess.assert_not_called()
-
-    def test_count_never_exceeds_the_limit(self):
-        """確保に失敗した回数ぶん、件数が増えていないこと。"""
-        for _ in range(settings.SITE_DAILY_LIMIT + 3):
-            self._judge(Client())
-
-        usage = DailyUsage.objects.get()
-        self.assertEqual(usage.count, settings.SITE_DAILY_LIMIT)
-
-    def test_limit_recovers_at_the_jst_date_boundary(self):
-        before = datetime(2026, 8, 18, 23, 59, tzinfo=quota.JST)
-        after = datetime(2026, 8, 19, 0, 1, tzinfo=quota.JST)
-
-        with mock.patch.object(quota, "_now_jst", return_value=before):
-            for _ in range(settings.SITE_DAILY_LIMIT):
-                self._judge(Client())
-            response, _ = self._judge(Client())
-            self.assertContains(response, "あなたの使いすぎではありません")
-
-        with mock.patch.object(quota, "_now_jst", return_value=after):
-            response, _ = self._judge(Client())
-            self.assertContains(response, "危険度")
-
-    @override_settings(VIEW_TEST_MODE=True)
-    def test_view_test_mode_does_not_consume_the_budget(self):
-        """API を叩かない表示確認モードでは、枠を消費しないこと。"""
-        for _ in range(settings.SITE_DAILY_LIMIT + 1):
-            self.client.post("/", {"mode": "text", "text": JOB_TEXT})
-
-        self.assertFalse(DailyUsage.objects.exists())
-
-    def test_only_a_date_and_a_count_are_stored(self):
-        """数えるために保存するのは、日付と件数だけであること。"""
-        self._judge()
-
-        self.assertEqual(
-            sorted(f.name for f in DailyUsage._meta.fields), ["count", "date", "id"]
-        )
-        self.assertNotIn(MARKER, str(list(DailyUsage.objects.values())))
-
-    def test_a_database_error_stops_the_api_call(self):
-        """DB 障害のときは、API を叩かずにサイト側の障害として案内すること。
-
-        件数を記録できない状態で投げ続けると、歯止めが無いまま費用だけが出る。
-        """
-        with mock.patch.object(
-            DailyUsage.objects,
-            "get_or_create",
-            side_effect=DatabaseError("connection lost"),
-        ):
-            response, assess = self._judge(Client())
-
-        self.assertIsNone(response.context.get("result"))
-        self.assertContains(response, "サイト側の問題なので")
-        # 上限で埋まったときの案内と混ざっていないこと（原因の取り違えを防ぐ）
-        self.assertNotContains(response, "あなたの使いすぎではありません")
-        assert_consultation_is_offered(self, response)
-        # 枠を取れなかった判定は API に届かない（＝費用が出ない）
-        assess.assert_not_called()
-
-
-@override_settings(SITE_DAILY_LIMIT=2)
-class SiteCounterHoldsUnderContentionTests(TestCase):
-    """全体の枠を数える処理が、競合と経年で崩れないことの検証。
-
-    ワーカーが複数ある本番では、read してから write する実装だと上限を
-    超えて通してしまう（費用の歯止めが外れる）。ただし実際の並行実行は
-    SQLite では再現できない（テーブルロックで1件しか通らず、実装を
-    入れ替えても緑になる）。そこで、上限の判定が SQL の条件に入っていること
-    自体を固定する。
-    """
-
-    NOW = datetime(2026, 9, 22, 12, 0, tzinfo=quota.JST)
-    TODAY = NOW.date()
-
-    def test_the_reservation_is_one_conditional_update(self):
-        quota.reserve_site_slot(self.NOW)  # 当日の行を作る
-
-        with CaptureQueriesContext(connection) as captured:
-            is_reserved, failure_reason = quota.reserve_site_slot(self.NOW)
-            self.assertTrue(is_reserved)
-            self.assertIsNone(failure_reason)
-
-        updates = [
-            q["sql"]
-            for q in captured.captured_queries
-            if q["sql"].lstrip().upper().startswith("UPDATE")
-        ]
-        self.assertEqual(len(updates), 1, "確保が UPDATE 1文になっていない")
-        # 上限の判定が WHERE に入っていること（Python 側で読んで比べていない）
-        self.assertRegex(updates[0], rf'count"?\s*<\s*{settings.SITE_DAILY_LIMIT}')
-
-    def test_a_row_already_at_the_limit_is_not_incremented(self):
-        DailyUsage.objects.create(date=self.TODAY, count=settings.SITE_DAILY_LIMIT)
-        is_reserved, failure_reason = quota.reserve_site_slot(self.NOW)
-
-        self.assertFalse(is_reserved)
-        self.assertEqual(
-            failure_reason, quota.SiteSlotReservationError.DAILY_QUOTA_REACHED
-        )
-        self.assertEqual(DailyUsage.objects.get().count, settings.SITE_DAILY_LIMIT)
-
-    def test_a_row_created_by_another_worker_does_not_break_the_reservation(self):
-        """同時に行が作られて IntegrityError になっても、確保を続けること。"""
-        DailyUsage.objects.create(date=self.TODAY, count=0)
-
-        with mock.patch.object(
-            DailyUsage.objects, "get_or_create", side_effect=IntegrityError("race")
-        ):
-            is_reserved, failure_reason = quota.reserve_site_slot(self.NOW)
-            self.assertTrue(is_reserved)
-            self.assertIsNone(failure_reason)
-
-        self.assertEqual(DailyUsage.objects.get().count, 1)
-
-    def test_a_database_error_is_reported_as_the_reason(self):
-        """DB に触れないときは、確保を諦めて理由を DATABASE_ERROR で返すこと。"""
-        with mock.patch.object(
-            DailyUsage.objects,
-            "get_or_create",
-            side_effect=DatabaseError("connection lost"),
-        ):
-            is_reserved, failure_reason = quota.reserve_site_slot(self.NOW)
-
-        self.assertFalse(is_reserved)
-        self.assertEqual(failure_reason, quota.SiteSlotReservationError.DATABASE_ERROR)
-
-    def test_rows_older_than_the_retention_window_are_deleted(self):
-        """古い行は、その日の最初の確保のときに消えること。"""
-        stale = self.TODAY - timedelta(days=quota.RETENTION_DAYS + 1)
-        kept = self.TODAY - timedelta(days=quota.RETENTION_DAYS - 1)
-        DailyUsage.objects.create(date=stale, count=1)
-        DailyUsage.objects.create(date=kept, count=1)
-
-        quota.reserve_site_slot(self.NOW)
-
-        self.assertEqual(
-            sorted(DailyUsage.objects.values_list("date", flat=True)),
-            [kept, self.TODAY],
-        )

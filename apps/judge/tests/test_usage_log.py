@@ -1,7 +1,10 @@
-"""トークン使用量のログの回帰テスト。
+"""トークン使用量のログが、入力に由来する情報を残さないことの回帰テスト。
 
-費用の把握には使いたいが、入力に由来する情報は残さない。記録する項目が
+費用の把握には使いたいが、ログは残るものなので、入力の長さや判定した時刻の
+分秒といった「入力や利用者をたどれるもの」は落としてから出す。記録する項目が
 増えていないことも、ここで固定する。
+
+かかった費用をログから追えること自体は test_spec_cost_is_capped.py で見る。
 """
 
 import re
@@ -13,56 +16,21 @@ from django.test import TestCase, override_settings
 from .. import service
 from ..fixtures import FIXTURES
 from ..schema import RiskReportSchema
-from .helpers import JOB_TEXT, MARKER, capture_logs
+from .helpers import JOB_TEXT, MARKER, assess_with_usage, usage_line
 
 
 # このクラスは実 API 経路（使用量が出る経路）を見るため、VIEW_TEST_MODE を
 # 明示的に落とす。手元の .env が True だと、fixtures を返す経路に入って
-# 使用量のログが1行も出ず、ログを検査する9件がまとめて落ちる。テストの
+# 使用量のログが1行も出ず、ログを検査するテストがまとめて落ちる。テストの
 # 結果が環境変数に左右されないよう、ここで固定する。
 @override_settings(VIEW_TEST_MODE=False)
 class TokenUsageIsLoggedTests(TestCase):
-    """トークン使用量が、標準出力にだけ残ることの検証。
+    """使用量のログに、入力に由来するものが残らないことの検証。
 
-    費用の把握には使いたいが、DB に持つと「保存するのは1日の判定件数だけ」
-    という約束が崩れる。また、入力の長さは入力内容に由来する唯一の情報なので
-    記録しない。記録する項目が増えていないことも、ここで固定する。
+    DB に持つと「保存するのは1日の判定件数だけ」という約束が崩れる。また、
+    入力の長さは入力内容に由来する唯一の情報なので記録せず、時刻も時までに
+    丸める。記録する項目が増えていないことも、ここで固定する。
     """
-
-    def _assess(self, **usage):
-        response = mock.Mock(
-            stop_reason="end_turn",
-            model="claude-sonnet-5",
-            parsed_output=RiskReportSchema.model_validate(FIXTURES["danger"]),
-            usage=mock.Mock(**usage),
-        )
-        with mock.patch.object(service.anthropic, "Anthropic") as client_class:
-            client_class.return_value.messages.parse.return_value = response
-            with capture_logs() as logs:
-                service.job_offer_risk_assess(JOB_TEXT)
-        return logs.text
-
-    def _usage_line(self, output):
-        lines = [line for line in output.splitlines() if "token_usage" in line]
-        self.assertEqual(len(lines), 1, "使用量のログが1行だけ出ていない")
-        return lines[0]
-
-    def test_model_and_token_counts_are_recorded(self):
-        line = self._usage_line(
-            self._assess(
-                input_tokens=1234,
-                output_tokens=567,
-                cache_read_input_tokens=890,
-                cache_creation_input_tokens=432,
-            )
-        )
-
-        self.assertIn("model=claude-sonnet-5", line)
-        self.assertIn("input_100=1200", line)  # 1234 を100単位に丸めた値
-        self.assertIn("output=567", line)
-        self.assertIn("cache_read=890", line)
-        # 固定プロンプトの分量なので丸めない（命中率を出すのに要る）
-        self.assertIn("cache_write=432", line)
 
     def test_input_tokens_are_rounded_to_a_hundred(self):
         """入力トークン数は、そのまま残さないこと。
@@ -73,55 +41,34 @@ class TokenUsageIsLoggedTests(TestCase):
         """
         for raw, rounded in [(4821, "4800"), (4850, "4900"), (49, "0"), (150, "200")]:
             with self.subTest(input_tokens=raw):
-                line = self._usage_line(
-                    self._assess(
+                line = usage_line(
+                    self,
+                    assess_with_usage(
                         input_tokens=raw, output_tokens=1, cache_read_input_tokens=0
-                    )
+                    ),
                 )
                 self.assertIn(f"input_100={rounded}", line)
                 self.assertNotIn(str(raw), line)
 
     def test_timestamp_is_rounded_to_the_hour(self):
         """分・秒を残さないこと（判定した時刻から利用者をたどれないように）。"""
-        line = self._usage_line(
-            self._assess(input_tokens=1, output_tokens=1, cache_read_input_tokens=0)
+        line = usage_line(
+            self,
+            assess_with_usage(
+                input_tokens=1, output_tokens=1, cache_read_input_tokens=0
+            ),
         )
 
         hour = re.search(r"hour=(\S+)", line).group(1)
         self.assertRegex(hour, r"^\d{4}-\d{2}-\d{2}T\d{2}\+09:00$")
 
-    def test_cache_hit_and_miss_are_both_visible(self):
-        """命中・不命中のどちらも記録されること。
-
-        判定プロンプトがキャッシュに当たるかで1件あたりの費用が2倍以上変わる。
-        cache_read だけでは命中率が出せないので、書き込み側も要る。
-        """
-        hit = self._usage_line(
-            self._assess(
-                input_tokens=1,
-                output_tokens=1,
-                cache_read_input_tokens=6330,
-                cache_creation_input_tokens=0,
-            )
-        )
-        miss = self._usage_line(
-            self._assess(
-                input_tokens=1,
-                output_tokens=1,
-                cache_read_input_tokens=0,
-                cache_creation_input_tokens=6330,
-            )
-        )
-
-        self.assertIn("cache_read=6330 cache_write=0", hit)
-        self.assertIn("cache_read=0 cache_write=6330", miss)
-
     def test_only_the_agreed_fields_are_recorded(self):
         """入力文字数など、取り決めにない項目が増えていないこと。"""
-        line = self._usage_line(
-            self._assess(
+        line = usage_line(
+            self,
+            assess_with_usage(
                 input_tokens=1234, output_tokens=567, cache_read_input_tokens=890
-            )
+            ),
         )
 
         self.assertEqual(
@@ -130,13 +77,13 @@ class TokenUsageIsLoggedTests(TestCase):
         )
 
     def test_the_job_text_never_reaches_the_usage_log(self):
-        output = self._assess(
+        output = assess_with_usage(
             input_tokens=1234, output_tokens=567, cache_read_input_tokens=890
         )
 
         self.assertIn("token_usage", output)
         self.assertNotIn(MARKER, output)
-        self.assertNotIn(str(len(JOB_TEXT)), self._usage_line(output))
+        self.assertNotIn(str(len(JOB_TEXT)), usage_line(self, output))
 
     def test_a_failing_usage_log_does_not_change_the_verdict(self):
         """使用量のログで例外が出ても、判定の結果を捨てないこと。
@@ -160,14 +107,6 @@ class TokenUsageIsLoggedTests(TestCase):
             result = service.job_offer_risk_assess(JOB_TEXT)
 
         self.assertIsInstance(result, RiskReportSchema)
-
-    def test_usage_goes_to_stdout(self):
-        """標準エラーではなく標準出力に出す設定になっていること。"""
-        logger_conf = settings.LOGGING["loggers"]["apps.judge.usage"]
-        handler = settings.LOGGING["handlers"][logger_conf["handlers"][0]]
-
-        self.assertEqual(handler["stream"], "ext://sys.stdout")
-        self.assertFalse(logger_conf["propagate"])
 
     def test_usage_format_carries_no_precise_timestamp(self):
         """書式が秒までの時刻を足すと、丸めた意味が無くなる。"""

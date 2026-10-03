@@ -11,17 +11,21 @@
 
 守っている約束:
 
-- test_spec_no_stored_input.py       入力がディスク・ログ・セッション・キャッシュに残らないこと
+- test_spec_no_stored_input.py       入力がディスク・ログ・セッション・キャッシュに残らないこと・
+                                     数えるために保存するのは日付と件数だけであること
 - test_spec_prompt_injection.py      求人テキストが囲みタグの境界を偽装できないこと
 - test_spec_result_display.py        情報不足の扱い、「安全」と言い切らない表示、
                                      判定JSONの値域と配色（画面の見え方を崩す値を通さないこと）
 - test_spec_judgment_unavailable.py  判定を返せないときの振り分けと、相談先の案内
-- test_spec_view_test_mode.py        配線テストの結果を本物と誤認させないこと・見本が全件画面に出せること
+- test_spec_view_test_mode.py        配線テストの結果を本物と誤認させないこと・見本が全件画面に
+                                     出せること・費用も枠も使わないこと
 - test_spec_oversized_request.py     リクエストが上限を超えたときの見え方
 - test_spec_error_pages.py           差し替えたエラーページ（400 / 403 / 404 / 500）の見え方
 - test_spec_deployment_settings.py   デプロイ時の前提（CSRF・ホスト名・マイグレーション・admin）
 - test_spec_disclosure.py            入力画面の、外部送信の説明
-- test_spec_quota.py                 1日の判定回数の上限（個人の Cookie / サイト全体）
+- test_spec_quota.py                 個人の1日の上限（署名付き Cookie だけで数える）
+- test_spec_cost_is_capped.py        費用が想定を超えないこと（サイト全体の枠）・使ったぶんが
+                                     ログから追えること
 
 メンテナ用の道具:
 
@@ -36,7 +40,8 @@
 
 接頭辞が付いていない2件:
 
-- test_usage_log.py                  トークン使用量のログ（test_spec_* への解体は段階2以降）
+- test_usage_log.py                  使用量のログに入力に由来するものが残らないこと
+                                     （test_spec_no_stored_input.py への合流は段階3）
 - test_image_input.py                画像入力。停止中の機能なので、再開（#26）まで実装の単位で残す
 
 共有の道具（目印の文字列・ログ収集・SDK 例外の生成）は helpers.py にある。

@@ -12,6 +12,7 @@ test_spec_oversized_request.py）。入力欄にはむしろ戻す約束があ�
 import logging
 import os
 import tempfile
+from datetime import datetime, timedelta
 from unittest import mock, skip
 
 from django.conf import settings
@@ -19,7 +20,10 @@ from django.core.files import uploadedfile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase, override_settings
 
-from .. import forms, service, views
+from .. import forms, quota, service, views
+from ..fixtures import FIXTURES
+from ..models import DailyUsage
+from ..schema import RiskReportSchema
 from .helpers import (
     IMAGE_PAUSED,
     JOB_TEXT,
@@ -317,6 +321,62 @@ class ErrorMessagesNeverCarryInputTests(SimpleTestCase):
         form = forms.JobOfferRiskAssessForm(data={"text": filler[:over_length]})
 
         self.assertNotIn(MARKER, form.errors["text"][0])
+
+
+@override_settings(SITE_DAILY_LIMIT=2)
+class NothingButTheCountIsStoredTests(TestCase):
+    """数えるために保存するものが、日付と件数だけであることの検証。
+
+    1日の上限は、個人ぶんを署名付き Cookie、サイト全体ぶんを DailyUsage の
+    1行で数えている。数えるという目的のために、入力や利用者を識別できるものが
+    増えていないか、増えた行が残り続けないかを見る。上限そのものが効くことは
+    test_spec_quota.py、費用の歯止めとしての働きは test_spec_cost_is_capped.py。
+    """
+
+    NOW = datetime(2026, 9, 22, 12, 0, tzinfo=quota.JST)
+    TODAY = NOW.date()
+
+    def _judge(self):
+        return self.client.post("/", {"mode": "text", "text": JOB_TEXT})
+
+    @override_settings(VIEW_TEST_MODE=True)
+    def test_counting_leaves_nothing_but_a_hardened_cookie(self):
+        """カウントのために、入力内容やサーバー側の行が増えていないこと。"""
+        from django.contrib.sessions.models import Session
+
+        response = self._judge()
+
+        cookie = response.cookies[quota.COOKIE_NAME]
+        self.assertNotIn(MARKER, cookie.value)
+        self.assertTrue(cookie["httponly"])
+        self.assertEqual(cookie["samesite"], "Lax")
+        self.assertEqual(Session.objects.count(), 0, "セッション行が作成されている")
+
+    @override_settings(VIEW_TEST_MODE=False)
+    def test_only_a_date_and_a_count_are_stored(self):
+        """数えるために保存するのは、日付と件数だけであること。"""
+        report = RiskReportSchema.model_validate(FIXTURES["danger"])
+        with mock.patch.object(views, "job_offer_risk_assess", return_value=report):
+            self._judge()
+
+        self.assertEqual(
+            sorted(f.name for f in DailyUsage._meta.fields), ["count", "date", "id"]
+        )
+        self.assertNotIn(MARKER, str(list(DailyUsage.objects.values())))
+
+    def test_rows_older_than_the_retention_window_are_deleted(self):
+        """古い行は、その日の最初の確保のときに消えること。"""
+        stale = self.TODAY - timedelta(days=quota.RETENTION_DAYS + 1)
+        kept = self.TODAY - timedelta(days=quota.RETENTION_DAYS - 1)
+        DailyUsage.objects.create(date=stale, count=1)
+        DailyUsage.objects.create(date=kept, count=1)
+
+        quota.reserve_site_slot(self.NOW)
+
+        self.assertEqual(
+            sorted(DailyUsage.objects.values_list("date", flat=True)),
+            [kept, self.TODAY],
+        )
 
 
 class ResultPageIsNotCachedTests(TestCase):

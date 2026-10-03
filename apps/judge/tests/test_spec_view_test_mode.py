@@ -10,10 +10,12 @@
 
 from unittest import mock
 
+from django.conf import settings
 from django.test import SimpleTestCase, TestCase, override_settings
 
 from .. import views
 from ..fixtures import FIXTURES
+from ..models import DailyUsage
 from ..schema import RiskReportSchema
 from .helpers import JOB_TEXT
 
@@ -92,3 +94,21 @@ class EveryFixtureCanBeDisplayedTests(SimpleTestCase):
         }
 
         self.assertEqual(labels, {"危険", "要注意", "危険な兆候なし", "情報不足"})
+
+
+@override_settings(VIEW_TEST_MODE=True, SITE_DAILY_LIMIT=2)
+class WiringTestModeCostsNothingTests(TestCase):
+    """配線テストモードが、費用も枠も使わないことの検証。
+
+    このモードは LLM を呼ばずに見本を返すので、画面を確かめるために何度
+    押しても費用は出ない。ここで枠を消費してしまうと、確認作業の途中で
+    本物の判定が止まり、費用の歯止め（test_spec_cost_is_capped.py）の
+    見かけ上の残量も狂う。
+    """
+
+    def test_view_test_mode_does_not_consume_the_budget(self):
+        """API を叩かない表示確認モードでは、枠を消費しないこと。"""
+        for _ in range(settings.SITE_DAILY_LIMIT + 1):
+            self.client.post("/", {"mode": "text", "text": JOB_TEXT})
+
+        self.assertFalse(DailyUsage.objects.exists())
