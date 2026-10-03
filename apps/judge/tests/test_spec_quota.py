@@ -2,6 +2,10 @@
 
 個人の枠は署名付き Cookie だけで数え、費用の歯止めはサイト全体の枠に置いている。
 上限が効くことに加えて、回復・改ざん・保存しないことを確認する。
+
+断るときに相談先が出ることも見るが、案内の文言そのものは
+test_spec_judgment_unavailable.py が本体。ここでは「この経路からあの案内に届く」
+ことだけを見る。
 """
 
 from datetime import datetime, timedelta

@@ -2,6 +2,11 @@
 
 理由の振り分け（サービス層）と、画面の案内（相談先 #9110・188）の両方を見る。
 判定が止まっていても、相談先の情報だけは届ける必要がある。
+
+案内の文言そのもの（views の文字列）は、ここの UnavailableGuidanceTests が本体。
+各経路からその案内に届くことは、経路ごとのファイルで見る（1日の上限は
+test_spec_quota.py、上限超過は test_spec_oversized_request.py）。Django が返す
+エラーページ（400 / 403 / 500）は test_spec_error_pages.py。
 """
 
 import pathlib

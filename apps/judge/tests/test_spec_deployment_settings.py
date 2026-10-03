@@ -91,6 +91,9 @@ class AllowedHostsMustBeConfiguredTests(SimpleTestCase):
     runserver は起動時に止まるが、gunicorn などではこのチェックが走らない。
     設定漏れに気づくのがデプロイ後の最初のリクエストになるため、そのときに
     何が起きるか（全部拒否される）を固定しておく。
+
+    ここで見るのは status だけ。拒否されたときの画面（相談先が出る・ホスト名が
+    出ない）は test_spec_error_pages.py で見る。
     """
 
     @override_settings(ALLOWED_HOSTS=[], DEBUG=False)

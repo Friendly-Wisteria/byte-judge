@@ -7,6 +7,10 @@
 「500 にしない」「貼り付けた求人文をページに出さない」ことを守る。
 
 画像を含む場合の経路は test_image_input.py にある（画像入力の停止中は skip）。
+
+保存される場所（セッション / Cookie / ログ）に入力が残らないことは
+test_spec_no_stored_input.py で見る。ここで見るのは、この経路で返る「アプリの
+画面でないページ」に、送った文章が出ないことだけ。
 """
 
 import urllib.parse
@@ -132,13 +136,6 @@ class TextareaMaxLengthTest(SimpleTestCase):
         message = self._form(self.OVER_LENGTH).errors["text"][0]
         self.assertIn(f"{self.OVER_LENGTH}文字", message)
         self.assertIn(f"{TEXT_MAX_LENGTH}文字以内", message)
-
-    def test_error_message_does_not_echo_the_job_text(self):
-        """募集文そのものはメッセージに載せない
-        （messages は cookie / session に保存されるため）
-        変異テスト: メッセージに %(value)s を入れる
-        """
-        self.assertNotIn(MARKER, self._form(self.OVER_LENGTH).errors["text"][0])
 
 
 @override_settings(VIEW_TEST_MODE=True)

@@ -30,8 +30,8 @@ IMAGE_PAUSED = "画像（スクリーンショット）入力は停止中。再�
 MARKER = "ZZMARK7"
 JOB_TEXT = f"{MARKER} 日給5万円・即日手渡し・Telegramで連絡ください"
 
-# 利用者に見せない技術的な語。判定不可の案内（文言）と、差し替えたエラー
-# ページ（400 / 403 / 500）で検査する。
+# 利用者に見せない技術的な語。判定不可の案内（views の文言）の検査に使う
+# （test_spec_judgment_unavailable.py）。
 FORBIDDEN_TECHNICAL_TOKENS = (
     "AssessmentError",
     "UNAVAILABLE",
@@ -47,8 +47,9 @@ FORBIDDEN_TECHNICAL_TOKENS = (
     "API",
 )
 
-# エラーページに固有の危うさ。500 は DB 障害で、400 はホスト名の設定ミスで
-# 出るため、接続先や設定値が載っていないことまで見る。
+# 差し替えたページ（400 / 403 / 500）の検査に使う（test_spec_error_pages.py）。
+# 500 は DB 障害で、400 はホスト名の設定ミスで出るため、上の語に加えて接続先や
+# 設定値が載っていないことまで見る。
 FORBIDDEN_ON_THE_ERROR_PAGE = FORBIDDEN_TECHNICAL_TOKENS + (
     "DatabaseError",
     "OperationalError",

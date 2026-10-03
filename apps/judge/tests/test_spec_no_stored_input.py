@@ -2,6 +2,11 @@
 
 設定値の目視確認では将来の変更で退行しても気づけないため、実際にリクエストを
 通して外部に残る場所（ディスク / ログ / セッション / キャッシュ）を検査する。
+
+見るのは「保存される場所」に限る。送った文章がその場のレスポンスに出るかは
+経路ごとの見え方なので、各経路のファイルで見る（上限超過で返る 400 ページは
+test_spec_oversized_request.py）。入力欄にはむしろ戻す約束があるため、
+「どこにも出さない」ではない。
 """
 
 import logging
@@ -293,6 +298,25 @@ class SessionNeverContainsInputTests(TestCase):
 
         self.assertEqual(Session.objects.count(), 0, "セッション行が作成されている")
         self.assertNotIn("sessionid", self.client.cookies)
+
+
+class ErrorMessagesNeverCarryInputTests(SimpleTestCase):
+    """エラーメッセージに募集文が載らないことの検証。
+
+    messages は cookie / session に保存されるため、メッセージに入力が入ると
+    「サーバー側に残さない」約束はそこで崩れる。上限超過は入力をそのまま
+    載せ返しやすい経路なので、その代表としてここで固定する。
+    """
+
+    def test_error_message_does_not_echo_the_job_text(self):
+        """募集文そのものはメッセージに載せない
+        変異テスト: メッセージに %(value)s を入れる
+        """
+        over_length = forms.TEXT_MAX_LENGTH + 1000
+        filler = MARKER + "あ" * over_length
+        form = forms.JobOfferRiskAssessForm(data={"text": filler[:over_length]})
+
+        self.assertNotIn(MARKER, form.errors["text"][0])
 
 
 class ResultPageIsNotCachedTests(TestCase):

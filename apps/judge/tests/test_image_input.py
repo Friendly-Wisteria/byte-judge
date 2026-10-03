@@ -20,7 +20,7 @@ from .helpers import IMAGE_PAUSED, JOB_TEXT, png_at_least, upload
 
 @skip(IMAGE_PAUSED)
 @override_settings(VIEW_TEST_MODE=True)
-class OversizedRequestIsReportedTests(TestCase):
+class DiscardedOversizedImageIsReportedTests(TestCase):
     """リクエスト全体のサイズ超過で画像が捨てられた場合の案内の検証。
 
     メモリ専用ハンドラ構成では、上限超過の画像は request.FILES に載らず
