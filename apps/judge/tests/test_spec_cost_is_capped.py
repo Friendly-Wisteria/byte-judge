@@ -8,7 +8,7 @@
 ここでは「枠が尽きた経路からあの案内に届く」ことだけを見る。
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest import mock
 
 from django.conf import settings
@@ -126,6 +126,7 @@ class SiteCounterHoldsUnderContentionTests(TestCase):
     TODAY = NOW.date()
 
     def test_the_reservation_is_one_conditional_update(self):
+        """確保が、上限と当日を条件に含む UPDATE 1文で行われること。"""
         quota.reserve_site_slot(self.NOW)  # 当日の行を作る
 
         with CaptureQueriesContext(connection) as captured:
@@ -138,9 +139,31 @@ class SiteCounterHoldsUnderContentionTests(TestCase):
             for q in captured.captured_queries
             if q["sql"].lstrip().upper().startswith("UPDATE")
         ]
+
         self.assertEqual(len(updates), 1, "確保が UPDATE 1文になっていない")
-        # 上限の判定が WHERE に入っていること（Python 側で読んで比べていない）
-        self.assertRegex(updates[0], rf'count"?\s*<\s*{settings.SITE_DAILY_LIMIT}')
+        # SET と WHERE を分けてから当てる。文全体を見ると、日付を SET 側に書く
+        # 実装（例: save() で全列を書き戻す）でも日付の条件が通ってしまう。
+        set_clause, _, where_clause = updates[0].partition("WHERE")
+        # 上限と当日の判定が、どちらも WHERE に入っていること
+        # （Python 側で読んで比べていない／当日以外の行を増やしていない）。
+        # 条件の並び順と識別子の引用は backend 任せなので、条件ごとに別に見る。
+        # 日付リテラルは SQLite が '2026-09-22'、PostgreSQL が '2026-09-22'::date
+        # と出すため、後ろを縛らない形にしてある。
+        self.assertRegex(where_clause, rf'count"?\s*<\s*{settings.SITE_DAILY_LIMIT}')
+        self.assertRegex(where_clause, rf"""date"?\s*=\s*'{self.TODAY.isoformat()}'""")
+        # 件数の加算も SQL 側でやっていること（read してから write していない）
+        self.assertRegex(set_clause, r'count"?\s*=\s*\(?[^)]*count"?\s*\+\s*1')
+
+    def test_another_days_row_is_left_alone(self):
+        """当日以外の行を増やしていないこと（確保が当日の行に限られること）。"""
+        yesterday = self.TODAY - timedelta(days=1)
+        DailyUsage.objects.create(date=yesterday, count=0)
+
+        is_reserved, _ = quota.reserve_site_slot(self.NOW)
+
+        self.assertTrue(is_reserved)
+        self.assertEqual(DailyUsage.objects.get(date=yesterday).count, 0)
+        self.assertEqual(DailyUsage.objects.get(date=self.TODAY).count, 1)
 
     def test_a_row_already_at_the_limit_is_not_incremented(self):
         DailyUsage.objects.create(date=self.TODAY, count=settings.SITE_DAILY_LIMIT)
