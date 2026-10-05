@@ -154,6 +154,7 @@ def reserve_site_slot(
             )
         )
         if not is_reserved:
+            # 行が無い・見えない場合もここに来るが、安全側なので区別しない
             logger.warning("Site-wide daily limit reached")
             reason = SiteSlotReservationError.DAILY_QUOTA_REACHED
     except DatabaseError:
