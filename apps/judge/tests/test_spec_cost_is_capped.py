@@ -166,6 +166,7 @@ class SiteCounterHoldsUnderContentionTests(TestCase):
         self.assertEqual(DailyUsage.objects.get(date=self.TODAY).count, 1)
 
     def test_a_row_already_at_the_limit_is_not_incremented(self):
+        """すでにリミットに達したレコードは、それ以上カウントアップされないこと"""
         DailyUsage.objects.create(date=self.TODAY, count=settings.SITE_DAILY_LIMIT)
         is_reserved, failure_reason = quota.reserve_site_slot(self.NOW)
 
