@@ -76,6 +76,7 @@ class SiteDailyLimitTests(TestCase):
         self.assertEqual(usage.count, settings.SITE_DAILY_LIMIT)
 
     def test_limit_recovers_at_the_jst_date_boundary(self):
+        """日本時間で日付を跨ぐと、サイト全体でのAPI利用回数がリセットされること"""
         before = datetime(2026, 8, 18, 23, 59, tzinfo=quota.JST)
         after = datetime(2026, 8, 19, 0, 1, tzinfo=quota.JST)
 
