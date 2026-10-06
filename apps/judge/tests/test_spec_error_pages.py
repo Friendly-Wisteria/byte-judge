@@ -70,6 +70,8 @@ class ReplacedErrorPagesOfferConsultationTests(SimpleTestCase):
 
         400 はホスト名の設定ミスでも出るため、設定値や例外クラス名が載ると
         構成を外に教えることになる。
+        変異テスト: 400.html に "DisallowedHost Exception" を、500.html に
+        "OperationalError" や "DATABASE_URL" を直書きする
         """
         for template_name in REPLACED_ERROR_TEMPLATES:
             html = self._render(template_name)
@@ -106,11 +108,11 @@ class TheErrorRoutesReachTheReplacedPagesTests(SimpleTestCase):
     """
 
     def test_a_csrf_failure_offers_consultation(self):
-        """Cookie が無い状態で送っても、相談先が出ること。
+        """CSRF トークンを含めて POST できないときも、相談先が出ること。
 
         Cookie を受け付けない環境（プライベートブラウジング・Cookie の全面
-        ブロック・共用端末での削除）からは、判定を一度も送れない。素の英語
-        ページで締め出さない。
+        ブロック）からは、判定を一度も送れない。素の英語ページで締め出さない。
+        共用端末で Cookie を消しただけなら、初めて開いた人と同じ挙動になる。
         変異テスト: 403_csrf.html を消す
         """
         response = Client(enforce_csrf_checks=True).post(
@@ -139,7 +141,8 @@ class TheErrorRoutesReachTheReplacedPagesTests(SimpleTestCase):
 
         値が必要なのは設定を直す人で、その人はログを読める。画面に出すと、
         構成を外に教えることになる。
-        変異テスト: 400.html に exception や ALLOWED_HOSTS を埋め込む
+        変異テスト: 400.html に {{ request.META.HTTP_HOST }} を埋め込む /
+        "other.example.com" を直書きする
         """
         with self.assertLogs("apps.judge.views", level="ERROR"):
             response = self.client.get("/", headers={"host": "other.example.com"})
