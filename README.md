@@ -56,7 +56,7 @@
 |---|---|
 | 言語 | Python 3.13 |
 | フレームワーク | Django 6.1 |
-| LLM | Anthropic Claude（`anthropic` SDK。モデルは `CLAUDE_MODEL` で切り替え。既定は `claude-sonnet-5`） |
+| LLM | Anthropic Claude（`anthropic` SDK。モデルは `CLAUDE_MODEL` で切り替え。既定は `claude-sonnet-5-5`） |
 | バリデーション | Pydantic 2（LLM の出力は `RiskReportSchema` で構造化） |
 | 画像処理 | Pillow（起動時のピクセル数上限の設定にのみ使用。[画像入力は停止中](#入力の仕様)） |
 | 設定管理 | django-environ（`.env`） |
@@ -91,7 +91,7 @@ DEBUG=True
 
 # Anthropic (Claude)
 ANTHROPIC_API_KEY=<Claude Console で取得した API キー>
-CLAUDE_MODEL=claude-sonnet-5
+CLAUDE_MODEL=claude-sonnet-5-5
 
 # LLM を叩かず固定サンプルを返す配線テストモード（任意・既定 False）
 VIEW_TEST_MODE=False
@@ -106,7 +106,9 @@ SITE_DAILY_LIMIT=11
   uv run python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
   ```
 - `ANTHROPIC_API_KEY` は [Claude Console](https://platform.claude.com/) で発行してください。
-- `CLAUDE_MODEL` は既定の `claude-sonnet-5` を推奨します。
+- `CLAUDE_MODEL` は既定の `claude-sonnet-5-5` を推奨します。
+  - `claude-sonnet-5` でも動作は確認していますが、今後の判定プロンプトの変更は
+    `claude-sonnet-5-5` でのみ評価します
   - **非推奨**：`claude-haiku-4-5`（最安のモデルですが、比較テストで見落としが出ています）
   - **使用しないでください**：Anthropic が Covered Models に指定しているモデル
     （`claude-fable-5` / `claude-fable-5-1` / `claude-mythos-5` / `claude-mythos-5-1` など）
@@ -589,6 +591,12 @@ Claude API は `SITE_DAILY_LIMIT` で頭打ち）と、通知に気づいてか�
 - **必ずご自身で発行した Claude API キー（Commercial 組織のキー）を使用してください。**
   `.env` はリポジトリに含まれていません（`.gitignore` で除外しています）。
   「セットアップ」の手順に従って、ご自身のキーを設定してください。
+- **`claude-sonnet-5` から `claude-sonnet-5-5` に既定を切り替えました**（v0.2.0）。
+  2026-10-07 のサンプルデータ比較テストで、見落としと誤検知はどちらも 0 件のまま、
+  判定の安定性とシグナル理由の再現率が上がりました。単価は同じです。
+  - `claude-sonnet-5` も引き続き動作しますが、今後の判定プロンプトの変更は
+    `claude-sonnet-5-5` でのみ評価します。`.env` に `CLAUDE_MODEL=claude-sonnet-5` と
+    書いている場合は、書き換えるか行を削除すると切り替わります。
 - **`claude-haiku-4-5` への切り替えは推奨しません。** 2026-09-21 のサンプルデータ
   比較テストで、Sonnet 5 が 0 件だった危険な求人の見落としが 1 件発生しました。
   コスト削減の効果より、見落としによる利用者のリスクのほうが大きいと判断しています。

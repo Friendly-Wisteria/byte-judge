@@ -1,6 +1,6 @@
 [project]
 name = "20260720-byte-judge"
-version = "0.1.0"
+version = "0.2.0"
 description = "闇バイトの疑いがある求人を、LLM が危険度評価する Web アプリ"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
