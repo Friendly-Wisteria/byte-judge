@@ -232,7 +232,7 @@ MESSAGE_TAGS = {
 
 VIEW_TEST_MODE = env.bool("VIEW_TEST_MODE", default=False)
 
-CLAUDE_MODEL = env("CLAUDE_MODEL", default="claude-sonnet-5")
+CLAUDE_MODEL = env("CLAUDE_MODEL", default="claude-sonnet-5-5")
 
 # 1人あたり1日に判定できる件数。連打への摩擦で、ブラウザの Cookie で数える。
 # Cookie を消せば戻るため、費用の歯止めは下の SITE_DAILY_LIMIT 側に置いている。
