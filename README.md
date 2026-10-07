@@ -526,6 +526,39 @@ gcloud run services logs read byte-judge --region asia-northeast1 --limit 20
 プロンプトキャッシュの命中率も、この `token_usage` ログ（`cache_read` と
 `cache_write`）で測れます。
 
+#### 公開する前に、非公開のまま確認する場合
+
+`--allow-unauthenticated` を付けずにデプロイすると、ブラウザで URL を開いても
+`Forbidden` になります。`gcloud run services proxy` で確認するときは、次の2点に
+注意してください。
+
+- **proxy は、もう1つの URL に転送します。** Cloud Run のサービスには、上の
+  プロジェクト番号つきの URL のほかに、`<サービス名>-<ハッシュ>-<リージョン略号>.a.run.app`
+  の形の URL があり、proxy はこちらを使います。`ALLOWED_HOSTS` にこちらも
+  入れないと、画面を開いた時点で「送信を受け取れませんでした」になります。
+  - この URL は `gcloud run services describe byte-judge --region asia-northeast1 --format='value(status.url)'` で確かめられます。
+- **proxy 経由のブラウザからは、判定を送信できません。** 送信元が
+  `http://localhost:8080` になるため、CSRF の検査で「判定を送信できませんでした」に
+  なります。`CSRF_TRUSTED_ORIGINS` に localhost を足して通すことはしないで
+  ください。確認のための穴が、本番の設定に残ってしまいます。
+  - 判定まで確かめるときは、ID トークンを付けて、プロジェクト番号つきの URL に直接送ります。
+
+```bash
+URL=https://<サービス名>-<プロジェクト番号>.<リージョン>.run.app
+TOKEN=$(gcloud auth print-identity-token)
+curl -s -c cookies.txt -H "Authorization: Bearer $TOKEN" "$URL/" -o page.html
+CSRF=$(grep -o 'name="csrfmiddlewaretoken" value="[^"]*"' page.html | sed 's/.*value="//;s/"$//')
+curl -s -b cookies.txt -H "Authorization: Bearer $TOKEN" \
+  -H "Origin: $URL" -H "Referer: $URL/" \
+  --data-urlencode "csrfmiddlewaretoken=$CSRF" --data-urlencode "mode=text" \
+  --data-urlencode "text=<確認用の、普通の求人の文面>" \
+  "$URL/" -o /dev/null -w "%{http_code}\n"
+rm -f cookies.txt page.html
+```
+
+`200` が返ったら、上のログで `token_usage` の行が出ていることを確かめます。
+確認用の文面には、実在の闇バイト求人を使わないでください。
+
 ### 7. 費用のセーフティネット
 
 判定1件あたりの費用は Claude API が支配的で、GCP 側は平常時ならほぼ無料枠に
