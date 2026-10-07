@@ -29,7 +29,8 @@ claudecode_tasks.md
 # 作り方は apps/judge/evalset/README.md を参照。
 apps/judge/evalset/cases.toml
 
-# 作業レポート。開発の記録であり、成果物ではない。
-.reports/
+# 作業レポート（.internal/.reports/）やメールの下書き（.internal/external/）など、
+# 手元の記録。開発の記録であり、成果物ではない。
+.internal/
 
 privacy_policy_draft_v2.md

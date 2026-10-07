@@ -16,7 +16,7 @@ __pycache__/
 *.py[oc]
 .DS_Store
 .claude/
-.reports/
+.internal/
 
 # 開発中のメモ。動作には要らない
 claudecode_tasks.md
