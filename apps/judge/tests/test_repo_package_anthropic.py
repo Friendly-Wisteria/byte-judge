@@ -12,7 +12,7 @@ Dependabot が anthropic の更新 PR を作ったときに、こちらのコー
            apps.judge.tests.test_repo_package_anthropic
 
 2 の実行には環境変数 ANTHROPIC_API_KEY が必要（settings ではなく SDK が直接
-読む）。モデルは既定で claude-haiku-4-5 を使い、ANTHROPIC_SDK_TEST_MODEL で
+読む）。モデルは既定で claude-haiku-5-5 を使い、ANTHROPIC_SDK_TEST_MODEL で
 差し替えられる。本番モデル固有の破壊を見たいときは、そこに CLAUDE_MODEL と
 同じ値を入れる。
 """
@@ -115,9 +115,9 @@ class AnthropicAPITests(SimpleTestCase):
         # 運用
         * このテストは、Anthropic SDKのアップデートの検証時のみ実行する。
         * 実行時には、テスト環境の環境変数に`ANTHROPIC_SDK_TEST`を追加し、値をTrueとすること。
-        * 1回あたりの費用は、Haikuで約 $0.011(実測: cache_write 6,093 /
-          output 598 トークン)。年に数回の手動実行なのでプロンプト
-          キャッシュは毎回ミスし、常にこの最悪ケースになる。
+        * 1回あたりの費用は、Haikuで約 $0.0011(実測: キャッシュ対象 6,376 /
+          output 641 トークン。キャッシュ書き込みの単価で計算)。年に数回の
+          手動実行なのでプロンプトキャッシュは毎回ミスし、常にこの最悪ケースになる。
         # 対象外
         * 判定の精度・安定性は evaluate_prompt コマンドの担当であり、ここでは見ない
         * モデルの変更による実装の破壊は対象外とする

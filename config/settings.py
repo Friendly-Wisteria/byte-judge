@@ -254,4 +254,4 @@ SITE_DAILY_LIMIT = env.int("SITE_DAILY_LIMIT", default=11)
 # anthropic SDK の更新を検証するときだけ True にする（実 API を叩くため費用が出る）。
 # 引数の生存確認（AnthropicSDKSignatureTests）は常時実行で、ここには依存しない。
 ANTHROPIC_SDK_TEST = env.bool("ANTHROPIC_SDK_TEST", default=False)
-ANTHROPIC_SDK_TEST_MODEL = env("ANTHROPIC_SDK_TEST_MODEL", default="claude-haiku-4-5")
+ANTHROPIC_SDK_TEST_MODEL = env("ANTHROPIC_SDK_TEST_MODEL", default="claude-haiku-5-5")
