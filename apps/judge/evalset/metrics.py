@@ -86,7 +86,9 @@ def false_negative(outcomes: list[Outcome]) -> Ratio:
     「危険な兆候なし」と「情報不足」の両方を見逃しに数える。利用者から見れば
     どちらも警告が出ていないため。
     """
-    target = [o for o in outcomes if o.category in ("obvious", "disguised") and o.judged]
+    target = [
+        o for o in outcomes if o.category in ("obvious", "disguised") and o.judged
+    ]
     missed = [o for o in target if not o.warned]
     return Ratio(
         count=len(missed),

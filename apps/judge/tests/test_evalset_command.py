@@ -29,7 +29,6 @@ class EvalCommandTests(SimpleTestCase):
     実際に API を叩くと費用が出るので、サービス層を差し替えて配線だけを見る。
     """
 
-
     def setUp(self):
         self.path = pathlib.Path(tempfile.mkdtemp()) / "cases.toml"
         self.path.write_text(EVAL_CASES_TOML, encoding="utf-8")
@@ -297,10 +296,20 @@ class EvalJsonReportTests(SimpleTestCase):
         entry = payload["outcomes"][0]
         self.assertEqual(
             sorted(entry),
-            sorted([
-                "case_id", "category", "error", "level", "label", "score",
-                "has_enough_info", "signal_text", "summary", "advice",
-            ]),
+            sorted(
+                [
+                    "case_id",
+                    "category",
+                    "error",
+                    "level",
+                    "label",
+                    "score",
+                    "has_enough_info",
+                    "signal_text",
+                    "summary",
+                    "advice",
+                ]
+            ),
         )
         self.assertEqual(entry["summary"], self.report.summary)
         self.assertEqual(entry["advice"], self.report.advice)

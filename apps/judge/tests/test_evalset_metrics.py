@@ -120,7 +120,9 @@ class EvalMetricsTests(SimpleTestCase):
     def test_signal_recall_reports_a_miss_by_its_first_wording(self):
         cases = [
             evalset_dataset.Case(
-                id="c1", category="obvious", text="x",
+                id="c1",
+                category="obvious",
+                text="x",
                 expect_signals=("秘匿アプリ|Telegram|Signal",),
             )
         ]
@@ -138,43 +140,53 @@ class EvalMetricsTests(SimpleTestCase):
     # ---- 参考値の指標（モデルを変えるときの比較材料になる） --------------
 
     def test_an_obvious_case_left_at_caution_is_counted_as_underrated(self):
-        result = evalset_metrics.underrated_obvious([
-            self._make_outcome("obvious", level=Level.CAUTION),
-            self._make_outcome("obvious", level=Level.DANGER, case_id="c2"),
-        ])
+        result = evalset_metrics.underrated_obvious(
+            [
+                self._make_outcome("obvious", level=Level.CAUTION),
+                self._make_outcome("obvious", level=Level.DANGER, case_id="c2"),
+            ]
+        )
 
         self.assertEqual((result.count, result.total), (1, 2))
 
     def test_only_obvious_cases_count_as_underrated(self):
         """disguised は要注意が妥当なこともあるので、分母に入れない。"""
-        result = evalset_metrics.underrated_obvious([
-            self._make_outcome("disguised", level=Level.CAUTION),
-        ])
+        result = evalset_metrics.underrated_obvious(
+            [
+                self._make_outcome("disguised", level=Level.CAUTION),
+            ]
+        )
 
         self.assertEqual(result.total, 0)
         self.assertIsNone(result.rate)
 
     def test_an_obvious_case_without_enough_info_is_not_underrated(self):
         """情報不足は見逃しに数えるので、参考値の側で二重に数えない。"""
-        result = evalset_metrics.underrated_obvious([
-            self._make_outcome("obvious", level=Level.CAUTION, enough=False),
-        ])
+        result = evalset_metrics.underrated_obvious(
+            [
+                self._make_outcome("obvious", level=Level.CAUTION, enough=False),
+            ]
+        )
 
         self.assertEqual((result.count, result.total), (0, 1))
 
     def test_a_legitimate_case_judged_dangerous_is_a_false_positive(self):
-        result = evalset_metrics.false_positive([
-            self._make_outcome("legitimate", level=Level.DANGER),
-            self._make_outcome("legitimate", level=Level.CAUTION, case_id="c2"),
-        ])
+        result = evalset_metrics.false_positive(
+            [
+                self._make_outcome("legitimate", level=Level.DANGER),
+                self._make_outcome("legitimate", level=Level.CAUTION, case_id="c2"),
+            ]
+        )
 
         self.assertEqual((result.count, result.total), (1, 2))
 
     def test_only_legitimate_cases_count_as_false_positives(self):
         """グレーを危険と判定しても、偽陽性とは言えない。"""
-        result = evalset_metrics.false_positive([
-            self._make_outcome("gray", level=Level.DANGER),
-        ])
+        result = evalset_metrics.false_positive(
+            [
+                self._make_outcome("gray", level=Level.DANGER),
+            ]
+        )
 
         self.assertEqual(result.total, 0)
 

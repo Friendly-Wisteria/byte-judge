@@ -59,9 +59,7 @@ class Command(BaseCommand):
             help="API を叩かず、テストセットの構成と見積もりだけ出す",
         )
         parser.add_argument("--json", type=Path, help="結果を JSON でも保存する")
-        parser.add_argument(
-            "--yes", action="store_true", help="実行前の確認を省く"
-        )
+        parser.add_argument("--yes", action="store_true", help="実行前の確認を省く")
         # オプション名を変えるときは、handle() の options[PROMPT_OPTION] も
         # 一緒に変わるよう、名前を PROMPT_OPTION に一本化している。
         parser.add_argument(
@@ -159,7 +157,9 @@ class Command(BaseCommand):
         プロンプトを変えた PR の可否をこの数字で決めるので、黙って通さない。
         """
         missing = [
-            name for name in sorted(dataset.DANGEROUS_CATEGORIES) if not composition[name]
+            name
+            for name in sorted(dataset.DANGEROUS_CATEGORIES)
+            if not composition[name]
         ]
         if not missing:
             return
@@ -261,9 +261,10 @@ class Command(BaseCommand):
         if stab.cases > gray.cases:
             lines.append(f"  全体の安定性 {stab.format()}")
         if errs:
-            lines.append("  判定できなかった理由: " + ", ".join(
-                f"{name} {count}回" for name, count in errs.items()
-            ))
+            lines.append(
+                "  判定できなかった理由: "
+                + ", ".join(f"{name} {count}回" for name, count in errs.items())
+            )
         lines.append("=" * 62)
         return "\n".join(lines)
 
